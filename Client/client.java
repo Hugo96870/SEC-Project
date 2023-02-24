@@ -7,7 +7,6 @@ import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.Scanner;
 import java.security.*;
 import java.security.spec.*;
@@ -32,8 +31,7 @@ public class SecureClient {
 	private static final int BUFFER_SIZE = 65_507;
 	private static final Charset UTF_8 = StandardCharsets.UTF_8;
 
-	/*Encryption function with secret key */
-    public static byte[] do_Encryption(String plainText, SecretKey key) throws Exception
+    public static byte[] do_Encryption(String plainText,SecretKey key) throws Exception
     {
 		Cipher cipher = Cipher.getInstance(key.getAlgorithm());
 
@@ -42,8 +40,7 @@ public class SecureClient {
 		return cipher.doFinal(plainText.getBytes());
     }
 
-	/*Decryption function with secret key */
-    public static String do_Decryption(byte[] cipherText, SecretKey key) throws Exception
+    public static String do_Decryption(byte[] cipherText,SecretKey key) throws Exception
     {
 		Cipher cipher = Cipher.getInstance(key.getAlgorithm());
 
@@ -54,7 +51,6 @@ public class SecureClient {
 		return new String(result);
     }
 
-	/*Encryption function using RSA algorithm */
     public static byte[] do_RSAEncryption(String plainText,Key key) throws Exception
     {
         Cipher cipher = Cipher.getInstance("RSA");
@@ -81,7 +77,14 @@ public class SecureClient {
         return pub;
     }
 
-	/*Digest function to use in pre master secret */
+	public static PrivateKey readPrivateKey(String privateKeyPath) throws Exception {
+        byte[] privEncoded = readFile(privateKeyPath);
+        PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(privEncoded);
+        KeyFactory keyFacPriv = KeyFactory.getInstance("RSA");
+        PrivateKey priv = keyFacPriv.generatePrivate(privSpec);
+        return priv;
+    }
+
     public static byte[] digest(byte[] input, String algorithm) {
         MessageDigest md;
         try {
@@ -108,250 +111,150 @@ public class SecureClient {
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
 		final int serverPort = Integer.parseInt(args[1]);
-		final String keyPath = args[2];
-		
-		/*Create the token that will be responsible for freshness */
-		Integer token = 0;
+		final String keyPathPublic = "../Keys/userPub.key";
+		final String keyPathServerPublic = "../Keys/serverPub.key";
+		final String keyPathPriv = "../Keys/userPriv.key";
+		//final String keyPathSecret = "../Keys/";
 
-		/*Generate pre master secret */
-		Long preMasterSecret = Math.round(Math.abs(Math.random()) * 1000000);
+		double tokenDouble = Math.round(Math.abs(Math.random()) * 1000000);
+		Integer token = (int)tokenDouble;
+		String decryptedText = null;
 
-		String decryptedText = null, decryptedHmac = null, toSend = "accept";
+		Key publicKey = null;
+		Key privateKey = null;
+		Key secretKey = null;
 
-		Key key = null;
-		byte[] cipherText = null, secretKeyinByte = null, serverData = null, hmacToCheck = null;
+		byte[] cipherText = null, secretKeyinByte = null, serverData = null;
 
 		// Create socket
 		DatagramSocket socket = new DatagramSocket();
 
         // Create request message
-		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
+		JsonObject requestJson = JsonParser.parseString​("{}").getAsJsonObject();
 		{
-			requestJson.addProperty("preMasterSecret", preMasterSecret);
 			requestJson.addProperty("from", "Client");
 			String bodyText = "Establish connection";
 			requestJson.addProperty("info", bodyText);
+			requestJson.addProperty("token", token);
 		}
-		try{
-			secretKeyinByte = digest(preMasterSecret.toString().getBytes(UTF_8), "SHA3-256");
-		} catch(Exception e){
-			System.out.println("Error in SHA3");
-		}
-		System.out.println(String.format("PREMASTERSECRET: %s",bytesToHex(secretKeyinByte)));
 
 		String plainText = requestJson.toString();
 
-		/*Read server's public key */
 		try{
-			key = readPublicKey(keyPath);
+			publicKey = readPublicKey(keyPathPublic);
+			privateKey = readPrivateKey(keyPathPriv);
+			//secretKey =
 		}catch(Exception e){
-			System.out.println("Error reading server's public key");
+			System.out.println("Errooooooooooooooooooouuuuuuuuuuuuuuu");
 		}
 
-		//Encrypt with server's public key
 		try{
-			cipherText = do_RSAEncryption(plainText, key);
+			cipherText = do_Encryption(plainText, secretKey);
 		} catch(Exception e){
-			System.out.println("Error encrypting with server's public key");
+			System.out.println("Errou");
 		}
 
-		// Send connection request
+		// Send request
 		DatagramPacket clientPacket = new DatagramPacket(cipherText, cipherText.length, serverAddress, serverPort);
 		socket.send(clientPacket);
-		System.out.printf("Request packet sent to %s:%d!%n\n", serverAddress, serverPort);
-
-		/*Create secret key with AES algorithm */
-		SecretKey secretKey = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
+		System.out.printf("Request packet sent to %s:%d!%n", serverAddress, serverPort);
 
 		// Receive response
 		serverData = new byte[BUFFER_SIZE];
 		DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length);
-
+		System.out.println("Wait for response packet...");
 		socket.receive(serverPacket);
 
 		byte[] rcvdMsg = new byte[serverPacket.getLength()];
-
 		System.arraycopy(serverPacket.getData(), 0, rcvdMsg, 0, serverPacket.getLength());
 
-		JsonObject received = JsonParser.parseString(new String(rcvdMsg)).getAsJsonObject();
-		String hmac = null, receivedFromJson = null;
-		{
-			hmac = received.get("hmac").getAsString();
-			receivedFromJson = received.get("payload").getAsString();
-		}
-
-		byte[] receivedFromJsonBytes = Base64.getDecoder().decode(receivedFromJson);
-
-		//Decrypt with secret key
 		try{
-			decryptedText = do_Decryption(receivedFromJsonBytes, secretKey);
+			decryptedText = do_Decryption(rcvdMsg, secretKey);
 		} catch(Exception e){
-			System.out.println(e);
+			System.out.println("Errou1");
 		}
 
+		System.out.printf("Recebi %s", decryptedText);
 		// Parse JSON and extract arguments
-		JsonObject responseJson = JsonParser.parseString(decryptedText).getAsJsonObject();
+
+		JsonObject responseJson = JsonParser.parseString​(decryptedText).getAsJsonObject();
 		String body = null, tokenRcvd = null;
 		{
 			JsonObject infoJson = responseJson.getAsJsonObject("info");
 			tokenRcvd = infoJson.get("token").getAsString();
 			body = responseJson.get("body").getAsString();
 		}
-
-		//Verificação do hmac de modo a verificar integridade
-
-		byte[] hmacBytes = Base64.getDecoder().decode(hmac);
-
-		try{
-			decryptedHmac = do_Decryption(hmacBytes, secretKey);
-		} catch(Exception e){
-			System.out.println(e);
-		}
-
-		try{
-			hmacToCheck = digest(decryptedText.getBytes(UTF_8), "SHA3-256");
-		} catch (Exception e){
-			System.out.println(e);
-		}
-		if(decryptedHmac.getBytes() == hmacToCheck){
-			System.out.println("Compromised message");
-		}
-
-		System.out.printf("Recebi %s\n", decryptedText);
-
 		token = Integer.parseInt(tokenRcvd);
+		token++;
 
-		//------------------------------- CICLO WHILE A RECEBER Pedido WEBSERVER E Enviar resposta--------------------------------------
+		//------------------------------- CICLO WHILE A RECEBER RESPOSTA SERVER E RECEBER PEDIDO TERMINAL--------------------------------------
 
 		while(true){
 
-			// -------------------------------------------------------- Receive Responses ----------------------------------------------------------
+			// Esperar por clique e proceder
+
+			JsonObject requestJsonWhile = JsonParser.parseString​("{}").getAsJsonObject();
+			{
+				JsonObject infoJson = JsonParser.parseString​("{}").getAsJsonObject();
+				infoJson.addProperty("token", token.toString());
+				requestJsonWhile.add("info", infoJson);
+				String restaurant = "...";
+				requestJsonWhile.addProperty("restaurant", restaurant);
+				String numberPeople = "...";
+				requestJsonWhile.addProperty("numberPeople", numberPeople);
+				String date = "...";
+				requestJsonWhile.addProperty("date", date);
+				String time = "...";
+				requestJsonWhile.addProperty("time", time);
+			}
+
+			String plainTextWhile = requestJsonWhile.toString();
+
+			System.out.printf("Enviei %s", plainTextWhile);
+
+			try{
+				cipherText = do_Encryption(plainTextWhile, secretKey);
+			} catch(Exception e){
+				System.out.println("Errou");
+			}
+
+			// Send request
+			DatagramPacket clientPacketWhile = new DatagramPacket(cipherText, cipherText.length, serverAddress, serverPort);
+			socket.send(clientPacketWhile);
+
+// -------------------------------------------------------- RECEBER Resposta ----------------------------------------------------------
 			while(true){
-				// Receive response from webserver
+				// Receive response
 				byte[] serverDataWhile = new byte[BUFFER_SIZE];
 				DatagramPacket serverPacketWhile = new DatagramPacket(serverDataWhile, serverDataWhile.length);
 				System.out.println("Wait for response packet...");
 				socket.receive(serverPacketWhile);
 
 				byte[] rcvdMsgWhile = new byte[serverPacketWhile.getLength()];
-
 				System.arraycopy(serverPacketWhile.getData(), 0, rcvdMsgWhile, 0, serverPacketWhile.getLength());
 
-				JsonObject receivedWhile = JsonParser.parseString(new String(rcvdMsgWhile)).getAsJsonObject();
-				hmac = null;
-				receivedFromJson = null;
-				{
-					hmac = receivedWhile.get("hmac").getAsString();
-					receivedFromJson = receivedWhile.get("payload").getAsString();
-				}
-
-				receivedFromJsonBytes = Base64.getDecoder().decode(receivedFromJson);
-
-				//Decrypt with secret key
 				try{
-					decryptedText = do_Decryption(receivedFromJsonBytes, secretKey);
+					decryptedText = do_Decryption(rcvdMsgWhile, secretKey);
 				} catch(Exception e){
-					System.out.println(e);
+					System.out.println("Errou");
 				}
 
-				//Parse info to Json
-				responseJson = JsonParser.parseString(decryptedText).getAsJsonObject();
-				String cardNumber = null, threeDigits = null, validityDate = null, name = null;
+				responseJson = JsonParser.parseString​(decryptedText).getAsJsonObject();
 				{
 					JsonObject infoJson = responseJson.getAsJsonObject("info");
 					tokenRcvd = infoJson.get("token").getAsString();
-					cardNumber = responseJson.get("cardNumber").getAsString();
-					threeDigits = responseJson.get("threeDigits").getAsString();
-					validityDate = responseJson.get("validityDate").getAsString();
-					name = responseJson.get("name").getAsString();
-				}
-				System.out.printf("Recebi %s\n", decryptedText);
-
-				System.out.printf("Meu token %d\n", token);
-
-				//Verificação do hmac de modo a verificar integridade
-				hmacBytes = Base64.getDecoder().decode(hmac);
-
-				try{
-					decryptedHmac = do_Decryption(hmacBytes, secretKey);
-				} catch(Exception e){
-					System.out.println(e);
-				}
-				System.out.printf("Hmac %s\n", Base64.getEncoder().encodeToString(hmacBytes));
-
-				try{
-					hmacToCheck = digest(responseJson.toString().getBytes(UTF_8), "SHA3-256");
-				} catch (Exception e){
-					System.out.println(e);
+					body = responseJson.get("body").getAsString();
 				}
 
-				if(decryptedHmac.getBytes() == hmacToCheck){
-					toSend = "false";
-					System.out.println("Compromised message");
-				}
-
-				receivedFromJsonBytes = Base64.getDecoder().decode(receivedFromJson);
-				try{
-					threeDigits = do_Decryption( Base64.getDecoder().decode(threeDigits), secretKey);
-					cardNumber = do_Decryption( Base64.getDecoder().decode(cardNumber), secretKey);
-					validityDate = do_Decryption( Base64.getDecoder().decode(validityDate), secretKey);
-				} catch (Exception e){
-					System.out.println("Erro a decifrar");
-				}
+				System.out.printf("Recebi %s", decryptedText);
 				
-				//Check message freshness
+				//if we received response from server send msg
 				if((token + 1) == Integer.parseInt(tokenRcvd)){
 					token = Integer.parseInt(tokenRcvd) + 1;
 					break;
 				}
 				//else ignore response
 			}
-
-// -------------------------------------------------------- Send Requests ----------------------------------------------------------
-			//Wait for frontend click and store that information
-
-			/* Simular algum tipo de verificação por parte do banco dos dados da conta */
-
-			//Store info in Json format
-			JsonObject requestJsonWhile = JsonParser.parseString("{}").getAsJsonObject();
-			{
-				JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
-				infoJson.addProperty("token", token.toString());
-				requestJsonWhile.add("info", infoJson);
-				requestJsonWhile.addProperty("response", toSend);
-			}
-
-			String plainTextWhile = requestJsonWhile.toString();
-
-			System.out.printf("Enviei %s\n", plainTextWhile);
-
-			//Encrypt information with secret key
-			try{
-				cipherText = do_Encryption(plainTextWhile, secretKey);
-			} catch(Exception e){
-				System.out.println("Error encrypting with secret key");
-			}
-
-			byte[] hmacWhile = null;
-
-			//Criar Hmac da mensagem que nos irá garantir integridade
-			try{
-				hmacWhile = do_Encryption(digest(requestJsonWhile.toString().getBytes(UTF_8), "SHA3-256").toString(), secretKey);
-			} catch (Exception e){
-				System.out.println(e);
-			}
-
-			//Criar mensagem para enviar ao servidor
-			JsonObject toSendResponse = JsonParser.parseString("{}").getAsJsonObject();
-			{
-				toSendResponse.addProperty("payload", Base64.getEncoder().encodeToString(cipherText));
-				toSendResponse.addProperty("hmac", Base64.getEncoder().encodeToString(hmacWhile));
-			}
-
-			// Send request
-			DatagramPacket clientPacketWhile = new DatagramPacket(toSendResponse.toString().getBytes(),
-					toSendResponse.toString().getBytes().length, serverAddress, serverPort);
-			socket.send(clientPacketWhile);
 		}
 	}
 }
