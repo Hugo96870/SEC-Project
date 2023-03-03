@@ -2,98 +2,119 @@ package pt.tecnico;
 
 import java.io.*;
 import java.net.*;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.security.SecureRandom;
-import java.util.Base64;
-import java.util.Scanner;
 import java.security.*;
 import java.security.spec.*;
-import javax.crypto.*;
-import javax.crypto.spec.*;
-import java.util.Arrays.*;
-import java.lang.Math;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import javax.crypto.Cipher;
-import javax.xml.bind
-    .DatatypeConverter;
 import javax.crypto.spec.SecretKeySpec;
 import com.google.gson.*;
-
-
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Base64;
 
 public class SecureClient {
 
-    public static byte[] do_Encryption(String plainText, SecretKey key) throws Exception
+    public static String do_Encryption(String plainText, String path) throws Exception
     {
-		Cipher cipher = Cipher.getInstance(key.getAlgorithm());
+        // Load the secret key from the .key file
+        byte[] secretKeyBytes = Files.readAllBytes(Paths.get(path));
+        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKeyBytes, "AES");
 
-		cipher.init(Cipher.ENCRYPT_MODE, key);
+        // Convert the string to be encrypted to a byte array
+        byte[] plaintextBytes = plainText.getBytes("UTF-8");
 
-		return cipher.doFinal(plainText.getBytes());
+        // Create an instance of the Cipher class using the AES algorithm and initialize it with the secret key
+        Cipher cipher = Cipher.getInstance("AES");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+
+        // Use the Cipher object to encrypt the byte array
+        byte[] ciphertextBytes = cipher.doFinal(plaintextBytes);
+
+		// Encode the encrypted byte array to Base64 encoding
+		String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
+
+		return ciphertext;
     }
 
 	/*Decryption function with secret key */
-    public static String do_Decryption(byte[] cipherText, SecretKey key) throws Exception
+    public static String do_Decryption(String cipherText, String path, int lenght) throws Exception
     {
-		Cipher cipher = Cipher.getInstance(key.getAlgorithm());
+        // Load the secret key from the .key file
+        byte[] secretKeyBytes = Files.readAllBytes(Paths.get(path));
+        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKeyBytes, "AES");
 
-		cipher.init(Cipher.DECRYPT_MODE, key);
+		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
 
-		byte[] result = cipher.doFinal(cipherText);
-		
-		return new String(result);
+		byte[] finalCipherText = new byte[lenght];
+		System.arraycopy(ciphertextBytes, 0, finalCipherText, 0, lenght);
+
+        // Create an instance of the Cipher class using the AES algorithm and initialize it with the secret key
+        Cipher cipher = Cipher.getInstance("AES");
+        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
+
+        // Use the Cipher object to decrypt the byte array
+        byte[] plaintextBytes = cipher.doFinal(finalCipherText);
+
+        // Convert the decrypted byte array to a string
+        String plaintext = new String(plaintextBytes, "UTF-8");
+
+        System.out.println("Decrypted string: " + plaintext);
+
+		return plaintext;
     }
 
 	/*Encryption function using RSA algorithm */
-    public static byte[] do_RSAEncryption(String plainText,Key key) throws Exception
+    public static String do_RSAEncryption(String plainText, String path) throws Exception
     {
+
+		// Load the private key from the .key file
+		byte[] privateKeyBytes = Files.readAllBytes(Paths.get(path));
+		PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+		KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+		PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+
+        // Convert the string to be encrypted into a byte array
+        byte[] plaintextBytes = plainText.getBytes("UTF-8");
+
+        // Create an instance of the Cipher class using the RSA algorithm and initialize it with the private key
         Cipher cipher = Cipher.getInstance("RSA");
- 
-        cipher.init(Cipher.ENCRYPT_MODE, key);
- 
-        return cipher.doFinal(plainText.getBytes());
+        cipher.init(Cipher.ENCRYPT_MODE, privateKey);
+
+        // Use the Cipher object to encrypt the byte array
+        byte[] ciphertextBytes = cipher.doFinal(plaintextBytes);
+
+        // Encode the encrypted byte array into a string using Base64 encoding
+        String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
+        System.out.println("Encrypted string: " + ciphertext);
+
+		return ciphertext;
     }
 
-    public static String do_RSADecryption(byte[] cipherText, Key key) throws Exception
+    public static String do_RSADecryption(String cipherText, String path) throws Exception
     {
+        // Load the public key from the .key file
+        byte[] publicKeyBytes = Files.readAllBytes(Paths.get(path));
+        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        PublicKey publicKey = keyFactory.generatePublic(keySpec);
+
+        // Decode the encrypted string from Base64 encoding to a byte array
+    	byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
+
+        // Create an instance of the Cipher class using the RSA algorithm and initialize it with the public key
         Cipher cipher = Cipher.getInstance("RSA");
- 
-        cipher.init(Cipher.DECRYPT_MODE, key);
+        cipher.init(Cipher.DECRYPT_MODE, publicKey);
 
-        byte[] result = cipher.doFinal(cipherText);
- 
-        return new String(result);
-    }
+        // Use the Cipher object to decrypt the byte array
+        byte[] plaintextBytes = cipher.doFinal(ciphertextBytes);
 
-    private static byte[] readFile(String path) throws FileNotFoundException, IOException {
-        FileInputStream fis = new FileInputStream(path);
-        byte[] content = new byte[fis.available()];
-        fis.read(content);
-        fis.close();
-        return content;
-    }
+        // Convert the decrypted byte array to a string
+        String plaintext = new String(plaintextBytes, "UTF-8");
 
-    public static PublicKey readPublicKey(String publicKeyPath) throws Exception {
-        System.out.println("Reading public key from file " + publicKeyPath + " ...");
-        byte[] pubEncoded = readFile(publicKeyPath);
-        X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(pubEncoded);
-        KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
-        PublicKey pub = keyFacPub.generatePublic(pubSpec);
-        return pub;
-    }
+        System.out.println("Decrypted string: " + plaintext);
 
-    public static PrivateKey readPrivateKey(String privateKeyPath) throws Exception {
-        byte[] privEncoded = readFile(privateKeyPath);
-        PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(privEncoded);
-        KeyFactory keyFacPriv = KeyFactory.getInstance("RSA");
-        PrivateKey priv = keyFacPriv.generatePrivate(privSpec);
-        return priv;
+		return plaintext;
     }
 
 	/** Buffer size for receiving a UDP packet. */
@@ -107,38 +128,53 @@ public class SecureClient {
 			return;
 		}
 
-        final String keyPathPublic = "../Keys/userPub.key";
-		final String keyPathServerPublic = "../Keys/serverPub.key";
-		final String keyPathPriv = "../Keys/userPriv.key";
-		//final String keyPathSecret = "../Keys/";
+        final String keyPathPublic = "keys/serverPub.key";
+		final String keyPathPriv = "keys/userPriv.key";
+		final String keyPathSecret = "keys/secret.key";
+
+		String tokenToString = null;
+		String clientData = null;
+		String serverText = null;
 
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
 		final int serverPort = Integer.parseInt(args[1]);
 
         Integer token = 0;
-
-        byte[] tokenToByte = do_RSAEncryption(token.toString(), readPrivateKey(keyPathPriv));
-
+		
+		try{
+			tokenToString = do_RSAEncryption(token.toString(), keyPathPriv);
+		}
+		catch (Exception e){
+			System.out.printf("RSA encryption failed\n");
+			System.out.println(e.getMessage());
+		}
+		
 		// Create socket
 		DatagramSocket socket = new DatagramSocket();
 
         // Create request message
-		JsonObject requestJson = JsonParser.parseString​("{}").getAsJsonObject();
+		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			JsonObject infoJson = JsonParser.parseString​("{}").getAsJsonObject();
+			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
 			infoJson.addProperty("from", "Alice");
 			requestJson.add("info", infoJson);
-            infoJson.addProperty("token", tokenToByte.toString());
+            infoJson.addProperty("token", tokenToString);
 			String bodyText = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
 			requestJson.addProperty("body", bodyText);
 		}
 		System.out.println("Request message: " + requestJson);
 
 		// Send request
-		byte[] clientData = do_Encryption(requestJson.toString(), "READ SECRET KEY");
-		System.out.printf("%d bytes %n", clientData.length);
-		DatagramPacket clientPacket = new DatagramPacket(clientData, clientData.length, serverAddress, serverPort);
+		try{
+			clientData = do_Encryption(requestJson.toString(), keyPathSecret);
+		}
+		catch (Exception e){
+			System.out.printf("Encryption failed\n");
+		}
+
+		System.out.printf("%d bytes %n", Base64.getDecoder().decode(clientData).length);
+		DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, serverAddress, serverPort);
 		socket.send(clientPacket);
 		System.out.printf("Request packet sent to %s:%d!%n", serverAddress, serverPort);
 
@@ -151,11 +187,16 @@ public class SecureClient {
 		System.out.printf("%d bytes %n", serverPacket.getLength());
 
 		// Convert response to string
-		String serverText = do_Decryption(serverPacket.getData(), "READ SECRET KEY");
+		try{
+			serverText = do_Decryption(Base64.getEncoder().encodeToString(serverPacket.getData()), keyPathSecret, serverPacket.getLength());
+		}
+		catch(Exception e){
+			System.out.printf("Decryption failed\n");
+		}
 		System.out.println("Received response: " + serverText);
 
 		// Parse JSON and extract arguments
-		JsonObject responseJson = JsonParser.parseString​(serverText).getAsJsonObject();
+		JsonObject responseJson = JsonParser.parseString(serverText).getAsJsonObject();
 		String from = null, body = null, tokenRcvd = null;
 		{
 			JsonObject infoJson = responseJson.getAsJsonObject("info");
@@ -165,7 +206,14 @@ public class SecureClient {
 		}
 		System.out.printf("Message from '%s':%n%s%n", from, body);
 
-        //DECRYPT TOKEN WITH RSA key
+		try{
+			tokenRcvd = do_RSADecryption(tokenRcvd, keyPathPublic);
+		}
+		catch (Exception e){
+			System.out.printf("Identity invalid");
+		}
+
+		System.out.printf("Identity validated");
 
 		// Close socket
 		socket.close();
