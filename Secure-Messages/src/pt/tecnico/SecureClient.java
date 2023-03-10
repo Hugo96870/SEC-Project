@@ -166,7 +166,6 @@ public class SecureClient {
 			String bodyText = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
 			requestJson.addProperty("body", bodyText);
 		}
-		System.out.println("Recebi algo do servidor");
 
 		// Send request
 		try{
@@ -186,6 +185,8 @@ public class SecureClient {
 		System.out.println("Wait for response packet...");
 		socket.receive(serverPacket);
 
+		System.out.println("Received response");
+
 		// Convert response to string
 		try{
 			serverText = do_Decryption(Base64.getEncoder().encodeToString(serverPacket.getData()), keyPathSecret, serverPacket.getLength());
@@ -193,7 +194,6 @@ public class SecureClient {
 		catch(Exception e){
 			System.out.printf("Decryption failed\n");
 		}
-		System.out.println("Received response");
 
 		// Parse JSON and extract arguments
 		JsonObject responseJson = JsonParser.parseString(serverText).getAsJsonObject();
@@ -212,7 +212,7 @@ public class SecureClient {
 			System.out.printf("Identity invalid");
 		}
 
-		System.out.printf("Identity validated");
+		System.out.printf("Identity validated\n");
 
 		// Close socket
 		socket.close();
