@@ -20,9 +20,13 @@ import java.util.Base64;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 
 public class SecureServer {
+
+	private static Integer consensusCounter = 0;
 
 	enum message_type{
 		PREPREPARE,
@@ -135,7 +139,8 @@ public class SecureServer {
 		return plaintext;
     }
 
-	public static void broadcast(String text, Integer instance, Integer port, List<Integer> serverPorts, DatagramSocket socket){
+	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket){
+		consensusCounter++;
 
 		InetAddress serverToSend = null;
 
@@ -143,7 +148,7 @@ public class SecureServer {
 		JsonObject prePrepareMessage = JsonParser.parseString("{}").getAsJsonObject();
 		{
 			prePrepareMessage.addProperty("messageType", message_type.PREPREPARE.toString());
-			prePrepareMessage.addProperty("instance", instance.toString());
+			prePrepareMessage.addProperty("instance", consensusCounter.toString());
 			prePrepareMessage.addProperty("value", text);
 		}
 		try{
@@ -164,6 +169,49 @@ public class SecureServer {
 				}
 			}
 		}
+	}
+
+	public static void respondToClient(String tokenRcvd, String keyPathPriv, String keyPathSecret, DatagramSocket socket,
+										DatagramPacket clientPacket){
+			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
+		String tokenToByte = null;
+		try{
+			tokenToByte = do_RSAEncryption(tokenRcvd, keyPathPriv);
+		}
+		catch (Exception e){
+			System.out.printf("RSA encryption failed\n");
+		}
+
+		// Create response message
+		JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
+			responseJson.add("info", infoJson);
+			infoJson.addProperty("token", tokenToByte);
+			String bodyText = "String added";
+			responseJson.addProperty("body", bodyText);
+		}
+
+		// Send response
+		String serverData = null;
+		try{
+			serverData = do_Encryption(responseJson.toString(), keyPathSecret);
+		}
+		catch (Exception e){
+			System.out.printf("Encryption failed\n");
+		}
+		
+		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(serverData), Base64.getDecoder().decode(serverData).length, clientPacket.getAddress(), clientPacket.getPort());
+		
+		try{
+			socket.send(serverPacket);
+		}catch(Exception e){
+			System.out.println("Error when responding to client");
+		}
+
+		System.out.printf("Response packet sent to %s:%d!%n", clientPacket.getAddress(), clientPacket.getPort());
+
+/* --------------------------------------------------------------------------------------------------------------------------- */
 	}
 
 	/**
@@ -190,22 +238,18 @@ public class SecureServer {
 		final String keyPathPriv = "keys/serverPriv.der";
 		final String keyPathSecret = "keys/secret.key";
 
-		String tokenToByte = null;
-
 		//Parse Arguments
 		Integer nrPorts = Integer.parseInt(args[0]);
 
-		final int port = Integer.parseInt(args[1]);
+		final Integer port = Integer.parseInt(args[1]);
 
 		final int leaderPort = Integer.parseInt(args[2]);
 
 		List<Integer> serverPorts = new ArrayList<Integer>(nrPorts);
 
-
 		//Initialization algorithm variables
-		Integer consensusInstance = 0;
 		String inputValue;
-		String decidedValue = null;
+		String valueDecided;
 
 		for(int i = 0; i < nrPorts; i++){
 			serverPorts.add(8000 + i);
@@ -234,7 +278,6 @@ public class SecureServer {
 
 				String token = null;
 				String tokenRcvd = null;
-				String serverData = null;
 				String clientText = null;
 
 				System.out.printf("Received request packet from %s:%d!%n", clientAddress, clientPort);
@@ -268,8 +311,8 @@ public class SecureServer {
 /* --------------------------------------------------------------------------------------------------------------------------- */
 	/* ------------------------------------- Broadcast da primeira mensagem ------------------------------ */
 
-				broadcast(inputValue, consensusInstance, port, serverPorts, socket);
-				consensusInstance++;
+				broadcast(inputValue, port, serverPorts, socket);
+
 /* --------------------------------------------------------------------------------------------------------------------------- */
 			
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
@@ -278,37 +321,8 @@ public class SecureServer {
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 
-	/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
-				try{
-					tokenToByte = do_RSAEncryption(tokenRcvd, keyPathPriv);
-				}
-				catch (Exception e){
-					System.out.printf("RSA encryption failed\n");
-				}
+				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket);
 
-				// Create response message
-				JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
-				{
-					JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
-					responseJson.add("info", infoJson);
-					infoJson.addProperty("token", tokenToByte);
-					String bodyText = "String added";
-					responseJson.addProperty("body", bodyText);
-				}
-
-				// Send response
-				try{
-					serverData = do_Encryption(responseJson.toString(), keyPathSecret);
-				}
-				catch (Exception e){
-					System.out.printf("Encryption failed\n");
-				}
-				
-				DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(serverData), Base64.getDecoder().decode(serverData).length, clientPacket.getAddress(), clientPacket.getPort());
-				socket.send(serverPacket);
-				System.out.printf("Response packet sent to %s:%d!%n", clientPacket.getAddress(), clientPacket.getPort());
-
-/* --------------------------------------------------------------------------------------------------------------------------- */
 			}
 			else{
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
