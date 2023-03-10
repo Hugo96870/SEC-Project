@@ -188,10 +188,11 @@ public class SecureServer {
 			String from = null, body = null;
 			{
 				JsonObject infoJson = requestJson.getAsJsonObject("info");
-				from = infoJson.get("from").getAsString();;
 				body = requestJson.get("body").getAsString();
                 token = infoJson.get("token").getAsString();
 			}
+
+			System.out.printf("Recebi esta mensagem: %s\n", body);
 
 			try{
 				tokenRcvd = do_RSADecryption(token, keyPathClientPublic);
@@ -211,10 +212,9 @@ public class SecureServer {
 			JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
 			{
 				JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
-				infoJson.addProperty("from", "Bob");
 				responseJson.add("info", infoJson);
                 infoJson.addProperty("token", tokenToByte);
-				String bodyText = "Yes. See you tomorrow!";
+				String bodyText = "String added";
 				responseJson.addProperty("body", bodyText);
 			}
 
