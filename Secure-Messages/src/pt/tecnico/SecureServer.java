@@ -26,6 +26,17 @@ import java.util.HashMap;
 
 public class SecureServer {
 
+	/**
+	 * Maximum size for a UDP packet. The field size sets a theoretical limit of
+	 * 65,535 bytes (8 byte header + 65,527 bytes of data) for a UDP datagram.
+	 * However the actual limit for the data length, which is imposed by the IPv4
+	 * protocol, is 65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header.
+	 */
+	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
+
+	/** Buffer size for receiving a UDP packet. */
+	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
+
 	private static Integer consensusCounter = 0;
 
 	enum message_type{
@@ -139,7 +150,7 @@ public class SecureServer {
 		return plaintext;
     }
 
-	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket){
+	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket, message_type type){
 		consensusCounter++;
 
 		InetAddress serverToSend = null;
@@ -169,6 +180,46 @@ public class SecureServer {
 				}
 			}
 		}
+
+		type = message_type.PREPARE;
+	}
+
+	public static String leaderConsensus(DatagramSocket socket, Integer consensusNumber, String input){
+
+		Map<String, Integer> prepareValues = new HashMap<String, Integer>();
+		Map<String, Integer> commitValues = new HashMap<String, Integer>();
+		
+		socket.send("PREPARE");
+
+		byte[] buf = new byte[BUFFER_SIZE];
+		DatagramPacket toReceive = new DatagramPacket(buf, buf.length);
+		try{
+			socket.receive(toReceive);
+		}catch(Exception e){
+			System.out.println("Error while waiting for server message");
+		}
+
+		return "ola";
+	}
+
+	public static String normalConsensus(DatagramSocket socket, Integer consensusNumber){
+
+		Map<String, Integer> prepareValues = new HashMap<String, Integer>();
+		Map<String, Integer> commitValues = new HashMap<String, Integer>();
+
+		socket.receive("Pre Prepare");
+
+		socket.send("PREPARE");
+
+		byte[] buf = new byte[BUFFER_SIZE];
+		DatagramPacket toReceive = new DatagramPacket(buf, buf.length);
+		try{
+			socket.receive(toReceive);
+		}catch(Exception e){
+			System.out.println("Error while waiting for server message");
+		}
+
+		return "ola";
 	}
 
 	public static void respondToClient(String tokenRcvd, String keyPathPriv, String keyPathSecret, DatagramSocket socket,
@@ -214,17 +265,6 @@ public class SecureServer {
 /* --------------------------------------------------------------------------------------------------------------------------- */
 	}
 
-	/**
-	 * Maximum size for a UDP packet. The field size sets a theoretical limit of
-	 * 65,535 bytes (8 byte header + 65,527 bytes of data) for a UDP datagram.
-	 * However the actual limit for the data length, which is imposed by the IPv4
-	 * protocol, is 65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header.
-	 */
-	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
-
-	/** Buffer size for receiving a UDP packet. */
-	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
-
 	public static void main(String[] args) throws IOException {
 		// Check arguments
 		if (args.length < 3) {
@@ -251,6 +291,9 @@ public class SecureServer {
 		String inputValue;
 		String valueDecided;
 
+		//State to be expected
+		message_type expectedType = null;
+
 		for(int i = 0; i < nrPorts; i++){
 			serverPorts.add(8000 + i);
 		}
@@ -258,6 +301,8 @@ public class SecureServer {
 		// Create server socket
 		DatagramSocket socket = new DatagramSocket(port);
 		System.out.printf("Server will receive packets on port %d %n", port);
+
+		Integer consensusNumber = (nrPorts + (nrPorts-1)/3)/2 + 1;
 
 		// Wait for client packets 
 		byte[] buf = new byte[BUFFER_SIZE];
@@ -311,13 +356,13 @@ public class SecureServer {
 /* --------------------------------------------------------------------------------------------------------------------------- */
 	/* ------------------------------------- Broadcast da primeira mensagem ------------------------------ */
 
-				broadcast(inputValue, port, serverPorts, socket);
+				broadcast(inputValue, port, serverPorts, socket, expectedType);
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 			
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
 
-
+				valueDecided = leaderConsensus(socket, consensusNumber, inputValue);
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 
@@ -327,7 +372,7 @@ public class SecureServer {
 			else{
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
 
-				
+				valueDecided = normalConsensus(socket, consensusNumber);
 
 	/* --------------------------------------------------------------------------------------------------------------------------- */
 			}
