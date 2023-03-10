@@ -34,6 +34,8 @@ public class SecureClient {
 		// Encode the encrypted byte array to Base64 encoding
 		String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
 
+		System.out.println("Encryptei com AES");
+
 		return ciphertext;
     }
 
@@ -59,7 +61,7 @@ public class SecureClient {
         // Convert the decrypted byte array to a string
         String plaintext = new String(plaintextBytes, "UTF-8");
 
-        System.out.println("Decrypted string: " + plaintext);
+		System.out.println("Desencryptei com AES");
 
 		return plaintext;
     }
@@ -86,7 +88,8 @@ public class SecureClient {
 
         // Encode the encrypted byte array into a string using Base64 encoding
         String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
-        System.out.println("Encrypted string: " + ciphertext);
+
+		System.out.println("Encryptei com RSA");
 
 		return ciphertext;
     }
@@ -112,7 +115,7 @@ public class SecureClient {
         // Convert the decrypted byte array to a string
         String plaintext = new String(plaintextBytes, "UTF-8");
 
-        System.out.println("Decrypted string: " + plaintext);
+		System.out.println("Desencryptei com RSA");
 
 		return plaintext;
     }
@@ -128,8 +131,8 @@ public class SecureClient {
 			return;
 		}
 
-        final String keyPathPublic = "keys/serverPub.key";
-		final String keyPathPriv = "keys/userPriv.key";
+        final String keyPathPublic = "keys/serverPub.der";
+		final String keyPathPriv = "keys/userPriv.der";
 		final String keyPathSecret = "keys/secret.key";
 
 		String tokenToString = null;
@@ -163,7 +166,7 @@ public class SecureClient {
 			String bodyText = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
 			requestJson.addProperty("body", bodyText);
 		}
-		System.out.println("Request message: " + requestJson);
+		System.out.println("Recebi algo do servidor");
 
 		// Send request
 		try{
@@ -173,18 +176,15 @@ public class SecureClient {
 			System.out.printf("Encryption failed\n");
 		}
 
-		System.out.printf("%d bytes %n", Base64.getDecoder().decode(clientData).length);
 		DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, serverAddress, serverPort);
 		socket.send(clientPacket);
-		System.out.printf("Request packet sent to %s:%d!%n", serverAddress, serverPort);
+		System.out.printf("Request packet sent\n");
 
 		// Receive response
 		byte[] serverData = new byte[BUFFER_SIZE];
 		DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length);
 		System.out.println("Wait for response packet...");
 		socket.receive(serverPacket);
-		System.out.printf("Received packet from %s:%d!%n", serverPacket.getAddress(), serverPacket.getPort());
-		System.out.printf("%d bytes %n", serverPacket.getLength());
 
 		// Convert response to string
 		try{
@@ -193,7 +193,7 @@ public class SecureClient {
 		catch(Exception e){
 			System.out.printf("Decryption failed\n");
 		}
-		System.out.println("Received response: " + serverText);
+		System.out.println("Received response");
 
 		// Parse JSON and extract arguments
 		JsonObject responseJson = JsonParser.parseString(serverText).getAsJsonObject();
@@ -204,7 +204,6 @@ public class SecureClient {
             tokenRcvd = infoJson.get("token").getAsString();
 			body = responseJson.get("body").getAsString();
 		}
-		System.out.printf("Message from '%s':%n%s%n", from, body);
 
 		try{
 			tokenRcvd = do_RSADecryption(tokenRcvd, keyPathPublic);
