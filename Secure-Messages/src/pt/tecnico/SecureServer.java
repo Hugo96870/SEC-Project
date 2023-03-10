@@ -18,9 +18,17 @@ import java.security.spec.*;
 import java.nio.file.Files;
 import java.util.Base64;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class SecureServer {
+
+	enum message_type{
+		PREPREPARE,
+		PREPARE,
+		COMMIT;
+	}
 
     public static String do_Encryption(String plainText, String path) throws Exception
     {
@@ -127,6 +135,37 @@ public class SecureServer {
 		return plaintext;
     }
 
+	public static void broadcast(String text, Integer instance, Integer port, List<Integer> serverPorts, DatagramSocket socket){
+
+		InetAddress serverToSend = null;
+
+		// Create request message
+		JsonObject prePrepareMessage = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			prePrepareMessage.addProperty("messageType", message_type.PREPREPARE.toString());
+			prePrepareMessage.addProperty("instance", instance.toString());
+			prePrepareMessage.addProperty("value", text);
+		}
+		try{
+			serverToSend = InetAddress.getByName("localhost");
+		}catch (Exception e){
+			System.out.printf("Cant resolve host\n");
+		}
+
+		for(int i = 0; i < serverPorts.size(); i++){
+			if(port !=  serverPorts.get(i)){
+				Integer portToSend = serverPorts.get(i);
+				DatagramPacket prePreparePacket = new DatagramPacket(Base64.getDecoder().decode(prePrepareMessage.toString()),
+				Base64.getDecoder().decode(prePrepareMessage.toString()).length, serverToSend, portToSend);
+				try{
+					socket.send(prePreparePacket);
+				}catch (Exception e){
+					System.out.printf("Cant send PrePrepare message\n");
+				}
+			}
+		}
+	}
+
 	/**
 	 * Maximum size for a UDP packet. The field size sets a theoretical limit of
 	 * 65,535 bytes (8 byte header + 65,527 bytes of data) for a UDP datagram.
@@ -140,19 +179,37 @@ public class SecureServer {
 
 	public static void main(String[] args) throws IOException {
 		// Check arguments
-		if (args.length < 1) {
+		if (args.length < 3) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s port%n", SecureServer.class.getName());
 			return;
 		}
 
+		//Key paths
 		final String keyPathClientPublic = "keys/userPub.der";
 		final String keyPathPriv = "keys/serverPriv.der";
 		final String keyPathSecret = "keys/secret.key";
 
 		String tokenToByte = null;
 
-		final int port = Integer.parseInt(args[0]);
+		//Parse Arguments
+		Integer nrPorts = Integer.parseInt(args[0]);
+
+		final int port = Integer.parseInt(args[1]);
+
+		final int leaderPort = Integer.parseInt(args[2]);
+
+		List<Integer> serverPorts = new ArrayList<Integer>(nrPorts);
+
+
+		//Initialization algorithm variables
+		Integer consensusInstance = 0;
+		String inputValue;
+		String decidedValue = null;
+
+		for(int i = 0; i < nrPorts; i++){
+			serverPorts.add(8000 + i);
+		}
 
 		// Create server socket
 		DatagramSocket socket = new DatagramSocket(port);
@@ -161,74 +218,105 @@ public class SecureServer {
 		// Wait for client packets 
 		byte[] buf = new byte[BUFFER_SIZE];
 		while (true) {
-			// Receive packet
-			DatagramPacket clientPacket = new DatagramPacket(buf, buf.length);
-			socket.receive(clientPacket);
-			InetAddress clientAddress = clientPacket.getAddress();
-			int clientPort = clientPacket.getPort();
-			int clientLength = clientPacket.getLength();
-            String token = null;
-			String serverData = null;
-			byte[] clientData = clientPacket.getData();
-			String clientText = null;
-			System.out.printf("Received request packet from %s:%d!%n", clientAddress, clientPort);
-			System.out.printf("%d bytes %n", clientLength);
-			String tokenRcvd = null;
 
-			// Convert request to string
-			try{
-				clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, clientLength);
-			}
-			catch(Exception e){
-				System.out.println(e);
-			}
+			//Algoritmo 1
+			if(port == leaderPort){
 
-			// Parse JSON and extract arguments
-			JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
-			String from = null, body = null;
-			{
-				JsonObject infoJson = requestJson.getAsJsonObject("info");
-				body = requestJson.get("body").getAsString();
-                token = infoJson.get("token").getAsString();
-			}
+	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
+				// Receive packet
+				DatagramPacket clientPacket = new DatagramPacket(buf, buf.length);
+				socket.receive(clientPacket);
 
-			System.out.printf("Recebi esta mensagem: %s\n", body);
+				InetAddress clientAddress = clientPacket.getAddress();
+				int clientPort = clientPacket.getPort();
+				int clientLength = clientPacket.getLength();
+				byte[] clientData = clientPacket.getData();
 
-			try{
-				tokenRcvd = do_RSADecryption(token, keyPathClientPublic);
-			}
-			catch (Exception e){
-				System.out.printf("Identity invalid");
-			}
+				String token = null;
+				String tokenRcvd = null;
+				String serverData = null;
+				String clientText = null;
 
-			try{
-				tokenToByte = do_RSAEncryption(tokenRcvd, keyPathPriv);
-			}
-			catch (Exception e){
-				System.out.printf("RSA encryption failed\n");
-			}
+				System.out.printf("Received request packet from %s:%d!%n", clientAddress, clientPort);
 
-			// Create response message
-			JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
-			{
-				JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
-				responseJson.add("info", infoJson);
-                infoJson.addProperty("token", tokenToByte);
-				String bodyText = "String added";
-				responseJson.addProperty("body", bodyText);
-			}
+				// Convert request to string
+				try{
+					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, clientLength);
+				}
+				catch(Exception e){
+					System.out.println(e);
+				}
 
-            // Send response
-			try{
-				serverData = do_Encryption(responseJson.toString(), keyPathSecret);
-			}
-			catch (Exception e){
-				System.out.printf("Encryption failed\n");
-			}
+				// Parse JSON and extract arguments
+				JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
+				String body = null;
+				{
+					JsonObject infoJson = requestJson.getAsJsonObject("info");
+					body = requestJson.get("body").getAsString();
+					token = infoJson.get("token").getAsString();
+				}
+
+				inputValue = body;
+				System.out.printf("Recebi esta mensagem: %s\n", body);
+
+				try{
+					tokenRcvd = do_RSADecryption(token, keyPathClientPublic);
+				}
+				catch (Exception e){
+					System.out.printf("Identity invalid");
+				}
+/* --------------------------------------------------------------------------------------------------------------------------- */
+	/* ------------------------------------- Broadcast da primeira mensagem ------------------------------ */
+
+				broadcast(inputValue, consensusInstance, port, serverPorts, socket);
+				consensusInstance++;
+/* --------------------------------------------------------------------------------------------------------------------------- */
 			
-			DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(serverData), Base64.getDecoder().decode(serverData).length, clientPacket.getAddress(), clientPacket.getPort());
-			socket.send(serverPacket);
-			System.out.printf("Response packet sent to %s:%d!%n", clientPacket.getAddress(), clientPacket.getPort());
+			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
+
+
+
+/* --------------------------------------------------------------------------------------------------------------------------- */
+
+	/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
+				try{
+					tokenToByte = do_RSAEncryption(tokenRcvd, keyPathPriv);
+				}
+				catch (Exception e){
+					System.out.printf("RSA encryption failed\n");
+				}
+
+				// Create response message
+				JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
+				{
+					JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
+					responseJson.add("info", infoJson);
+					infoJson.addProperty("token", tokenToByte);
+					String bodyText = "String added";
+					responseJson.addProperty("body", bodyText);
+				}
+
+				// Send response
+				try{
+					serverData = do_Encryption(responseJson.toString(), keyPathSecret);
+				}
+				catch (Exception e){
+					System.out.printf("Encryption failed\n");
+				}
+				
+				DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(serverData), Base64.getDecoder().decode(serverData).length, clientPacket.getAddress(), clientPacket.getPort());
+				socket.send(serverPacket);
+				System.out.printf("Response packet sent to %s:%d!%n", clientPacket.getAddress(), clientPacket.getPort());
+
+/* --------------------------------------------------------------------------------------------------------------------------- */
+			}
+			else{
+			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
+
+				
+
+	/* --------------------------------------------------------------------------------------------------------------------------- */
+			}
 		}
 	}
 }
