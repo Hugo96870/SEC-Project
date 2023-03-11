@@ -157,11 +157,15 @@ public class SecureServer {
 
 		InetAddress serverToSend = null;
 
+		System.out.printf("Vou enviar este tipo" + type + "\n");
+
 		// Create request message
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			message.addProperty("messageType", type.toString());
-			message.addProperty("instance", consensusCounter.toString());
+			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
+			message.add("info", infoJson);
+			infoJson.addProperty("messageType", type.name());
+			infoJson.addProperty("instance", consensusCounter.toString());
 			message.addProperty("value", valueToSend);
 		}
 		try{
@@ -173,8 +177,8 @@ public class SecureServer {
 		for(int i = 0; i < serverPorts.size(); i++){
 			if(port !=  serverPorts.get(i)){
 				Integer portToSend = serverPorts.get(i);
-				DatagramPacket prePreparePacket = new DatagramPacket(Base64.getDecoder().decode(message.toString()),
-				Base64.getDecoder().decode(message.toString()).length, serverToSend, portToSend);
+				DatagramPacket prePreparePacket = new DatagramPacket(message.toString().getBytes(),
+				message.toString().getBytes().length, serverToSend, portToSend);
 				try{
 					socket.send(prePreparePacket);
 				}catch (Exception e){
@@ -184,12 +188,10 @@ public class SecureServer {
 		}
 	}
 
-	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket, message_type type){
+	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket){
 		consensusCounter++;
 
-		sendMessageToAll(type, text, serverPorts, port, socket);
-
-		type = message_type.PREPARE;
+		sendMessageToAll(message_type.PREPREPARE, text, serverPorts, port, socket);
 	}
 
 	public static String waitForQuorum(Map<String, List<Integer>> values, Integer consensusNumber,
@@ -210,10 +212,12 @@ public class SecureServer {
 			JsonObject requestJson = JsonParser.parseString(clientData.toString()).getAsJsonObject();
 			String messageType = null, instance = null, value = null;
 			{
-				messageType = requestJson.get("messageType").getAsString();
-				instance = requestJson.get("instance").getAsString();
+				JsonObject infoJson = requestJson.getAsJsonObject("info");
+				messageType = infoJson.get("messageType").getAsString();
+				instance = infoJson.get("instance").getAsString();
 				value = requestJson.get("value").getAsString();
 			}
+
 			// If consensus instance is expected
 			if(Integer.parseInt(instance) == consensusCounter){
 				// If we receive message type expected
@@ -389,9 +393,6 @@ public class SecureServer {
 		String inputValue;
 		String valueDecided;
 
-		//State to be expected
-		message_type expectedType = null;
-
 		for(int i = 0; i < nrPorts; i++){
 			serverPorts.add(8000 + i);
 		}
@@ -408,6 +409,7 @@ public class SecureServer {
 
 			//Algoritmo 1
 			if(port == leaderPort){
+				System.out.println("Sou lider");
 
 	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
 				// Receive packet
@@ -454,7 +456,7 @@ public class SecureServer {
 /* --------------------------------------------------------------------------------------------------------------------------- */
 	/* ------------------------------------- Broadcast da primeira mensagem ------------------------------ */
 
-				broadcast(inputValue, port, serverPorts, socket, expectedType);
+				broadcast(inputValue, port, serverPorts, socket);
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 			
@@ -469,7 +471,7 @@ public class SecureServer {
 			}
 			else{
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
-
+				System.out.println("Sou normal");
 				valueDecided = normalConsensus(socket, consensusNumber, leaderPort, serverPorts, port);
 
 	/* --------------------------------------------------------------------------------------------------------------------------- */

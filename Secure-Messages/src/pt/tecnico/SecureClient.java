@@ -12,6 +12,7 @@ import com.google.gson.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Base64;
+import java.util.Scanner;
 
 public class SecureClient {
 
@@ -152,7 +153,11 @@ public class SecureClient {
 			System.out.printf("RSA encryption failed\n");
 			System.out.println(e.getMessage());
 		}
-		
+
+		Scanner sc = new Scanner(System.in);
+		String sentence = sc.nextLine();
+		sc.close();
+
 		// Create socket
 		DatagramSocket socket = new DatagramSocket();
 
@@ -162,7 +167,7 @@ public class SecureClient {
 			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
 			requestJson.add("info", infoJson);
             infoJson.addProperty("token", tokenToString);
-			String bodyText = "Adiciona isto à BlockChain";
+			String bodyText = sentence;
 			requestJson.addProperty("body", bodyText);
 		}
 
@@ -196,7 +201,7 @@ public class SecureClient {
 
 		// Parse JSON and extract arguments
 		JsonObject responseJson = JsonParser.parseString(serverText).getAsJsonObject();
-		String from = null, body = null, tokenRcvd = null;
+		String body = null, tokenRcvd = null;
 		{
 			JsonObject infoJson = responseJson.getAsJsonObject("info");
             tokenRcvd = infoJson.get("token").getAsString();
