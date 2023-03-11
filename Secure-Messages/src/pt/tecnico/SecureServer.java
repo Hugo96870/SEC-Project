@@ -47,6 +47,11 @@ public class SecureServer {
 		COMMIT;
 	}
 
+	//Key paths
+	private static final String keyPathClientPublic = "keys/userPub.der";
+	private static final String keyPathPriv = "keys/serverPriv.der";
+	private static final String keyPathSecret = "keys/secret.key";
+
     public static String do_Encryption(String plainText, String path) throws Exception
     {
         // Load the secret key from the .key file
@@ -162,12 +167,20 @@ public class SecureServer {
 		// Create request message
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
-			message.add("info", infoJson);
-			infoJson.addProperty("messageType", type.name());
-			infoJson.addProperty("instance", consensusCounter.toString());
+			message.addProperty("messageType", type.name());
+			message.addProperty("instance", consensusCounter.toString());
 			message.addProperty("value", valueToSend);
 		}
+
+		String clientData = null;
+
+		try{
+			clientData = do_Encryption(message.toString(), keyPathSecret);
+		}
+		catch (Exception e){
+			System.out.printf("Encryption failed\n");
+		}
+
 		try{
 			serverToSend = InetAddress.getByName("localhost");
 		}catch (Exception e){
@@ -177,8 +190,8 @@ public class SecureServer {
 		for(int i = 0; i < serverPorts.size(); i++){
 			if(port !=  serverPorts.get(i)){
 				Integer portToSend = serverPorts.get(i);
-				DatagramPacket prePreparePacket = new DatagramPacket(message.toString().getBytes(),
-				message.toString().getBytes().length, serverToSend, portToSend);
+				DatagramPacket prePreparePacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
+				Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
 				try{
 					socket.send(prePreparePacket);
 				}catch (Exception e){
@@ -205,16 +218,22 @@ public class SecureServer {
 			}catch(Exception e){
 				System.out.println("Failed to receive message");
 			}
-
+			String clientText = null;
 			byte[] clientData = messageFromServer.getData();
 
+			try{
+				clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, messageFromServer.getLength());
+			}
+			catch(Exception e){
+				System.out.println(e);
+			}
+
 			// Parse JSON and extract arguments
-			JsonObject requestJson = JsonParser.parseString(clientData.toString()).getAsJsonObject();
+			JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
 			String messageType = null, instance = null, value = null;
 			{
-				JsonObject infoJson = requestJson.getAsJsonObject("info");
-				messageType = infoJson.get("messageType").getAsString();
-				instance = infoJson.get("instance").getAsString();
+				messageType = requestJson.get("messageType").getAsString();
+				instance = requestJson.get("instance").getAsString();
 				value = requestJson.get("value").getAsString();
 			}
 
@@ -275,11 +294,18 @@ public class SecureServer {
 			}catch(Exception e){
 				System.out.println("Failed to receive message");
 			}
-
+			String clientText = null;
 			byte[] clientData = messageFromServer.getData();
 
+			try{
+				clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, messageFromServer.getLength());
+			}
+			catch(Exception e){
+				System.out.println(e);
+			}
+
 			// Parse JSON and extract arguments
-			JsonObject requestJson = JsonParser.parseString(clientData.toString()).getAsJsonObject();
+			JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
 			String messageType = null, instance = null, value = null;
 			{
 				messageType = requestJson.get("messageType").getAsString();
@@ -374,11 +400,6 @@ public class SecureServer {
 			System.err.printf("Usage: java %s port%n", SecureServer.class.getName());
 			return;
 		}
-
-		//Key paths
-		final String keyPathClientPublic = "keys/userPub.der";
-		final String keyPathPriv = "keys/serverPriv.der";
-		final String keyPathSecret = "keys/secret.key";
 
 		//Parse Arguments
 		Integer nrPorts = Integer.parseInt(args[0]);
