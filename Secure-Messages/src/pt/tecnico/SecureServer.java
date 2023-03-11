@@ -262,37 +262,63 @@ public class SecureServer {
 		return valueDecided;
 	}
 
-	public static String normalConsensus(DatagramSocket socket, Integer consensusNumber){
+	public static String receivePrePrepare(DatagramSocket socket, Integer leaderPort){
 
-		Map<String, Integer> prepareValues = new HashMap<String, Integer>();
-		Map<String, Integer> commitValues = new HashMap<String, Integer>();
+		while(true){
+			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
+			try{
+				socket.receive(messageFromServer);
+			}catch(Exception e){
+				System.out.println("Failed to receive message");
+			}
 
-		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(serverData),
-			Base64.getDecoder().decode(serverData).length, clientPacket.getAddress(), clientPacket.getPort());
+			byte[] clientData = messageFromServer.getData();
 
-		// Create response message
-		JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
-		{
-			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
-			responseJson.add("info", infoJson);
-			infoJson.addProperty("token", tokenToByte);
-			String bodyText = "String added";
-			responseJson.addProperty("body", bodyText);
+			// Parse JSON and extract arguments
+			JsonObject requestJson = JsonParser.parseString(clientData.toString()).getAsJsonObject();
+			String messageType = null, instance = null, value = null;
+			{
+				messageType = requestJson.get("messageType").getAsString();
+				instance = requestJson.get("instance").getAsString();
+				value = requestJson.get("value").getAsString();
+			}
+
+			// If we receive message type expected
+			if (messageType.equals(message_type.PREPREPARE.toString()) && Integer.parseInt(instance) == consensusCounter
+													&& leaderPort == messageFromServer.getPort()){
+				return value;
+			}
 		}
 
-		socket.receive("Pre Prepare");
+	}
 
-		socket.send("PREPARE");
+	public static String normalConsensus(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
+								List<Integer> serverports, Integer port){
 
-		byte[] buf = new byte[BUFFER_SIZE];
-		DatagramPacket toReceive = new DatagramPacket(buf, buf.length);
-		try{
-			socket.receive(toReceive);
-		}catch(Exception e){
-			System.out.println("Error while waiting for server message");
+		Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
+		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
+
+		String valueReceived = receivePrePrepare(socket, leaderPort);
+
+		sendMessageToAll(message_type.PREPARE, valueReceived, serverports, port, socket);
+
+		prepareValues.put(valueReceived, new ArrayList<Integer>());
+		prepareValues.get(valueReceived).add(port);
+
+		String valueAgreed = waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
+
+		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket);
+
+		commitValues.put(valueAgreed, new ArrayList<Integer>());
+		commitValues.get(valueAgreed).add(port);
+
+		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
+
+		if(valueAgreed != valueDecided){
+			return "No Decision";
 		}
 
-		return "ola";
+		return valueDecided;
 	}
 
 	public static void respondToClient(String tokenRcvd, String keyPathPriv, String keyPathSecret, DatagramSocket socket,
@@ -444,7 +470,7 @@ public class SecureServer {
 			else{
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
 
-				valueDecided = normalConsensus(socket, consensusNumber);
+				valueDecided = normalConsensus(socket, consensusNumber, leaderPort, serverPorts, port);
 
 	/* --------------------------------------------------------------------------------------------------------------------------- */
 			}
