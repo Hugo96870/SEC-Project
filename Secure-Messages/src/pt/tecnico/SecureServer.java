@@ -37,6 +37,8 @@ public class SecureServer {
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
+	private static byte[] buf = new byte[BUFFER_SIZE];
+
 	private static Integer consensusCounter = 0;
 
 	enum message_type{
@@ -150,17 +152,17 @@ public class SecureServer {
 		return plaintext;
     }
 
-	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket, message_type type){
-		consensusCounter++;
+	public static void sendMessageToAll(message_type type, String valueToSend, List<Integer> serverPorts,
+						Integer port, DatagramSocket socket){
 
 		InetAddress serverToSend = null;
 
 		// Create request message
-		JsonObject prePrepareMessage = JsonParser.parseString("{}").getAsJsonObject();
+		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			prePrepareMessage.addProperty("messageType", message_type.PREPREPARE.toString());
-			prePrepareMessage.addProperty("instance", consensusCounter.toString());
-			prePrepareMessage.addProperty("value", text);
+			message.addProperty("messageType", type.toString());
+			message.addProperty("instance", consensusCounter.toString());
+			message.addProperty("value", valueToSend);
 		}
 		try{
 			serverToSend = InetAddress.getByName("localhost");
@@ -171,8 +173,8 @@ public class SecureServer {
 		for(int i = 0; i < serverPorts.size(); i++){
 			if(port !=  serverPorts.get(i)){
 				Integer portToSend = serverPorts.get(i);
-				DatagramPacket prePreparePacket = new DatagramPacket(Base64.getDecoder().decode(prePrepareMessage.toString()),
-				Base64.getDecoder().decode(prePrepareMessage.toString()).length, serverToSend, portToSend);
+				DatagramPacket prePreparePacket = new DatagramPacket(Base64.getDecoder().decode(message.toString()),
+				Base64.getDecoder().decode(message.toString()).length, serverToSend, portToSend);
 				try{
 					socket.send(prePreparePacket);
 				}catch (Exception e){
@@ -180,32 +182,103 @@ public class SecureServer {
 				}
 			}
 		}
+	}
+
+	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket, message_type type){
+		consensusCounter++;
+
+		sendMessageToAll(type, text, serverPorts, port, socket);
 
 		type = message_type.PREPARE;
 	}
 
-	public static String leaderConsensus(DatagramSocket socket, Integer consensusNumber, String input){
-
-		Map<String, Integer> prepareValues = new HashMap<String, Integer>();
-		Map<String, Integer> commitValues = new HashMap<String, Integer>();
+	public static String waitForQuorum(Map<String, List<Integer>> values, Integer consensusNumber,
+							message_type type, DatagramSocket socket){
 		
-		socket.send("PREPARE");
+		//Cycle waitin for quorum
+		while(true){
+			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
+			try{
+				socket.receive(messageFromServer);
+			}catch(Exception e){
+				System.out.println("Failed to receive message");
+			}
 
-		byte[] buf = new byte[BUFFER_SIZE];
-		DatagramPacket toReceive = new DatagramPacket(buf, buf.length);
-		try{
-			socket.receive(toReceive);
-		}catch(Exception e){
-			System.out.println("Error while waiting for server message");
+			byte[] clientData = messageFromServer.getData();
+
+			// Parse JSON and extract arguments
+			JsonObject requestJson = JsonParser.parseString(clientData.toString()).getAsJsonObject();
+			String messageType = null, instance = null, value = null;
+			{
+				messageType = requestJson.get("messageType").getAsString();
+				instance = requestJson.get("instance").getAsString();
+				value = requestJson.get("value").getAsString();
+			}
+			// If consensus instance is expected
+			if(Integer.parseInt(instance) == consensusCounter){
+				// If we receive message type expected
+				if (messageType.equals(type.toString())){
+					// Add to list of received
+					if (values.get(value) != null){
+						values.get(value).add(messageFromServer.getPort());
+					}
+					else{
+						values.put(value, new ArrayList<Integer>());
+						values.get(value).add(messageFromServer.getPort());
+					}
+					// If we reached consensus
+					if(values.get(value).size() >= consensusNumber){
+						return value;
+					}
+				}
+			}
+		}
+	}
+
+	public static String leaderConsensus(DatagramSocket socket, Integer consensusNumber, String input,
+								List<Integer> serverports, Integer port){
+
+		Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
+		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
+
+		sendMessageToAll(message_type.PREPARE, input, serverports, port, socket);
+
+		prepareValues.put(input, new ArrayList<Integer>());
+		prepareValues.get(input).add(port);
+
+		String valueAgreed = waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
+
+		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket);
+
+		commitValues.put(input, new ArrayList<Integer>());
+		commitValues.get(input).add(port);
+
+		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
+
+		if(valueAgreed != valueDecided){
+			return "No Decision";
 		}
 
-		return "ola";
+		return valueDecided;
 	}
 
 	public static String normalConsensus(DatagramSocket socket, Integer consensusNumber){
 
 		Map<String, Integer> prepareValues = new HashMap<String, Integer>();
 		Map<String, Integer> commitValues = new HashMap<String, Integer>();
+
+		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(serverData),
+			Base64.getDecoder().decode(serverData).length, clientPacket.getAddress(), clientPacket.getPort());
+
+		// Create response message
+		JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
+			responseJson.add("info", infoJson);
+			infoJson.addProperty("token", tokenToByte);
+			String bodyText = "String added";
+			responseJson.addProperty("body", bodyText);
+		}
 
 		socket.receive("Pre Prepare");
 
@@ -223,7 +296,7 @@ public class SecureServer {
 	}
 
 	public static void respondToClient(String tokenRcvd, String keyPathPriv, String keyPathSecret, DatagramSocket socket,
-										DatagramPacket clientPacket){
+										DatagramPacket clientPacket, String valueToSend){
 			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 		String tokenToByte = null;
 		try{
@@ -239,8 +312,7 @@ public class SecureServer {
 			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
 			responseJson.add("info", infoJson);
 			infoJson.addProperty("token", tokenToByte);
-			String bodyText = "String added";
-			responseJson.addProperty("body", bodyText);
+			responseJson.addProperty("body", valueToSend);
 		}
 
 		// Send response
@@ -362,11 +434,11 @@ public class SecureServer {
 			
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
 
-				valueDecided = leaderConsensus(socket, consensusNumber, inputValue);
+				valueDecided = leaderConsensus(socket, consensusNumber, inputValue, serverPorts, port);
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 
-				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket);
+				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket, valueDecided);
 
 			}
 			else{
