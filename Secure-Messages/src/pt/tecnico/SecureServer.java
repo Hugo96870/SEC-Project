@@ -186,7 +186,8 @@ public class SecureServer {
 				Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
 				try{
 					socket.send(prePreparePacket);
-					System.out.printf("Enviei este tipo" + type + " para" + serverPorts.get(i) + "\n");
+					System.out.printf("Enviei esta mensagem " + valueToSend + "neste este tipo" + type +
+								" para" + serverPorts.get(i) + "\n");
 				}catch (Exception e){
 					System.out.printf("Cant send PrePrepare message\n");
 				}
@@ -354,6 +355,35 @@ public class SecureServer {
 		return valueDecided;
 	}
 
+	public static String byzantineProcess(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
+		List<Integer> serverports, Integer port){
+
+			Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
+			Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
+
+			receivePrePrepare(socket, leaderPort);
+
+			sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+
+			prepareValues.put("Vou trollar", new ArrayList<Integer>());
+			prepareValues.get("Vou trollar").add(port);
+
+			waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
+
+			sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+
+			commitValues.put("Vou trollar no commit", new ArrayList<Integer>());
+			commitValues.get("Vou trollar no commit").add(port);
+
+			String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
+
+			if("Vou trollar no commit" != valueDecided){
+				return "No Decision";
+			}
+
+		return valueDecided;
+	}
+
 	public static void respondToClient(String tokenRcvd, String keyPathPriv, String keyPathSecret, DatagramSocket socket,
 										DatagramPacket clientPacket, String valueToSend){
 			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
@@ -416,6 +446,8 @@ public class SecureServer {
 
 		final int leaderPort = Integer.parseInt(args[2]);
 
+		final String serverType = args[3];
+
 		List<Integer> serverPorts = new ArrayList<Integer>(nrPorts);
 
 		//Initialization algorithm variables
@@ -443,7 +475,12 @@ public class SecureServer {
 	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
 				// Receive packet
 				DatagramPacket clientPacket = new DatagramPacket(buf, buf.length);
-				socket.receive(clientPacket);
+				while(true){
+					socket.receive(clientPacket);
+					if(!serverPorts.contains(clientPacket.getPort())){
+						break;
+					}
+				}
 
 				InetAddress clientAddress = clientPacket.getAddress();
 				int clientPort = clientPacket.getPort();
@@ -504,12 +541,19 @@ public class SecureServer {
 				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket, response);
 
 			}
-			else{
+			else if (serverType.equals("N")){
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
 				System.out.println("Sou normal");
 				valueDecided = normalConsensus(socket, consensusNumber, leaderPort, serverPorts, port);
 
+				System.out.printf("Sou normal e concordamos com isto: " + valueDecided);
+
 	/* --------------------------------------------------------------------------------------------------------------------------- */
+			}
+			else{
+				valueDecided = byzantineProcess(socket, consensusNumber, leaderPort, serverPorts, port);
+
+				System.out.printf("Sou bizantino e tentei trollar mas não deu e eles concordaram nisto " + valueDecided);
 			}
 		}
 	}
