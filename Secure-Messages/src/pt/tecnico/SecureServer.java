@@ -238,7 +238,9 @@ public class SecureServer {
 				if (messageType.equals(type.toString())){
 					// Add to list of received
 					if (values.get(value) != null){
-						values.get(value).add(messageFromServer.getPort());
+						if(!values.get(value).contains(messageFromServer.getPort())){
+							values.get(value).add(messageFromServer.getPort());
+						}
 					}
 					else{
 						values.put(value, new ArrayList<Integer>());
@@ -290,7 +292,6 @@ public class SecureServer {
 			try{
 				System.out.println("Estou à espera");
 				socket.receive(messageFromServer);
-				consensusCounter++;
 				System.out.println("Recebi");
 			}catch(Exception e){
 				System.out.println("Failed to receive message");
@@ -318,8 +319,9 @@ public class SecureServer {
 			System.out.printf("Tipo de mansagem %s %s\n", message_type.PREPREPARE.toString(), messageType);
 			System.out.printf("Instancia %s %s\n", consensusCounter, instance);
 			System.out.printf("leader %s %s\n", leaderPort, messageFromServer.getPort());
-			if (messageType.equals(message_type.PREPREPARE.toString()) && Integer.parseInt(instance) == consensusCounter
+			if (messageType.equals(message_type.PREPREPARE.toString()) && Integer.parseInt(instance) == consensusCounter + 1
 													&& leaderPort == messageFromServer.getPort()){
+				consensusCounter++;
 				return value;
 			}
 		}
@@ -355,7 +357,8 @@ public class SecureServer {
 		return valueDecided;
 	}
 
-	public static String byzantineProcess(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
+	//Byzantine process doesnt respect Prepare and Commit values
+	public static String byzantineProcessPC(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
 		List<Integer> serverports, Integer port){
 
 			Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
@@ -384,6 +387,71 @@ public class SecureServer {
 		return valueDecided;
 	}
 
+	//Byzantine process tries to send PrePrepare even though he is not the leader and doesnt respect Prepare and Commit messages
+	public static String byzantineProcessPP(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
+	List<Integer> serverports, Integer port){
+
+		Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
+		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
+
+		broadcast("Vou trollar no prePrepare", port, serverports, socket);
+
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+
+		prepareValues.put("Vou trollar", new ArrayList<Integer>());
+		prepareValues.get("Vou trollar").add(port);
+
+		waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
+
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+
+		commitValues.put("Vou trollar no commit", new ArrayList<Integer>());
+		commitValues.get("Vou trollar no commit").add(port);
+
+		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
+
+		if("Vou trollar no commit" != valueDecided){
+			return "No Decision";
+		}
+
+		return valueDecided;
+	}
+
+	//Byzantine process sends several COMMITs and PREPAREs to other servers not respecting the algorithm
+	public static String byzantineProcessPCT(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
+	List<Integer> serverports, Integer port){
+
+		Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
+		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
+
+		receivePrePrepare(socket, leaderPort);
+
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+
+		prepareValues.put("Vou trollar", new ArrayList<Integer>());
+		prepareValues.get("Vou trollar").add(port);
+
+		waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
+
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+
+		commitValues.put("Vou trollar no commit", new ArrayList<Integer>());
+		commitValues.get("Vou trollar no commit").add(port);
+
+		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
+
+		if("Vou trollar no commit" != valueDecided){
+			return "No Decision";
+		}
+
+		return valueDecided;
+	}
+
+	//Sends encrypted message to client confirming the string appended
 	public static void respondToClient(String tokenRcvd, String keyPathPriv, String keyPathSecret, DatagramSocket socket,
 										DatagramPacket clientPacket, String valueToSend){
 			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
@@ -448,11 +516,11 @@ public class SecureServer {
 
 		final String serverType = args[3];
 
-		List<Integer> serverPorts = new ArrayList<Integer>(nrPorts);
-
 		//Initialization algorithm variables
 		String inputValue;
 		String valueDecided;
+
+		List<Integer> serverPorts = new ArrayList<Integer>(nrPorts);
 
 		for(int i = 0; i < nrPorts; i++){
 			serverPorts.add(8000 + i);
@@ -464,6 +532,8 @@ public class SecureServer {
 
 		Integer consensusNumber = (nrPorts + (nrPorts-1)/3)/2 + 1;
 
+		Map<Integer, String> consensusRounds = new HashMap<Integer,String>();
+
 		// Wait for client packets 
 		byte[] buf = new byte[BUFFER_SIZE];
 		while (true) {
@@ -473,7 +543,8 @@ public class SecureServer {
 				System.out.println("Sou lider");
 
 	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
-				// Receive packet
+	
+				// Receive packet and process data
 				DatagramPacket clientPacket = new DatagramPacket(buf, buf.length);
 				while(true){
 					socket.receive(clientPacket);
@@ -495,7 +566,7 @@ public class SecureServer {
 
 				System.out.println("Vou desencriptar pedido");
 
-				// Convert request to string
+				// Decryopt request
 				try{
 					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, clientLength);
 				}
@@ -516,7 +587,8 @@ public class SecureServer {
 				System.out.printf("Recebi esta mensagem: %s\n", body);
 
 				System.out.println("Vou desencriptar token");
-
+				
+				//Decrypt autentication token
 				try{
 					tokenRcvd = do_RSADecryption(token, keyPathClientPublic);
 				}
@@ -524,7 +596,7 @@ public class SecureServer {
 					System.out.printf("Identity invalid");
 				}
 /* --------------------------------------------------------------------------------------------------------------------------- */
-	/* ------------------------------------- Broadcast da primeira mensagem ------------------------------ */
+	/* ------------------------------------- Broadcast PREPREPARE message ------------------------------ */
 
 				broadcast(inputValue, port, serverPorts, socket);
 
@@ -540,6 +612,8 @@ public class SecureServer {
 
 				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket, response);
 
+				consensusRounds.put(consensusCounter,valueDecided);
+
 			}
 			else if (serverType.equals("N")){
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
@@ -548,10 +622,26 @@ public class SecureServer {
 
 				System.out.printf("Sou normal e concordamos com isto: " + valueDecided);
 
+				consensusRounds.put(consensusCounter, valueDecided);
+
 	/* --------------------------------------------------------------------------------------------------------------------------- */
 			}
-			else{
-				valueDecided = byzantineProcess(socket, consensusNumber, leaderPort, serverPorts, port);
+
+			// Caso o processo seja bizantino e não respeite o valor as mensagens COMMIT e PREPARE
+			else if (serverType.equals("B-PC")){
+				valueDecided = byzantineProcessPC(socket, consensusNumber, leaderPort, serverPorts, port);
+
+				System.out.printf("Sou bizantino e tentei trollar mas não deu e eles concordaram nisto " + valueDecided);
+			}
+			// Caso o processo seja bizantino e não respeite as mensagens PREPREPARE e o valor dos COMMITs e PREPAREs
+			else if (serverType.equals("B-PP")){
+				valueDecided = byzantineProcessPP(socket, consensusNumber, leaderPort, serverPorts, port);
+
+				System.out.printf("Sou bizantino e tentei trollar mas não deu e eles concordaram nisto " + valueDecided);
+			}
+			// Caso o processo seja bizantino e envie várias vezes PREPARE E COMMIT fora de ordem
+			else if (serverType.equals("B-PC-T")){
+				valueDecided = byzantineProcessPCT(socket, consensusNumber, leaderPort, serverPorts, port);
 
 				System.out.printf("Sou bizantino e tentei trollar mas não deu e eles concordaram nisto " + valueDecided);
 			}
