@@ -71,8 +71,6 @@ public class SecureServer {
 		// Encode the encrypted byte array to Base64 encoding
 		String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
 
-		System.out.println("Encryptei com AES");
-
 		return ciphertext;
     }
 
@@ -97,8 +95,6 @@ public class SecureServer {
 
         // Convert the decrypted byte array to a string
         String plaintext = new String(plaintextBytes, "UTF-8");
-
-		System.out.println("Desencriptei com AES");
 
 		return plaintext;
     }
@@ -126,8 +122,6 @@ public class SecureServer {
         // Encode the encrypted byte array into a string using Base64 encoding
         String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
 
-		System.out.println("Encriptei com RSA");
-
 		return ciphertext;
     }
 
@@ -151,8 +145,6 @@ public class SecureServer {
 
         // Convert the decrypted byte array to a string
         String plaintext = new String(plaintextBytes, "UTF-8");
-
-		System.out.println("Desencriptei com RSA");
 
 		return plaintext;
     }
@@ -188,12 +180,13 @@ public class SecureServer {
 		}
 
 		for(int i = 0; i < serverPorts.size(); i++){
-			if(port !=  serverPorts.get(i)){
+			if(!port.equals(serverPorts.get(i))){
 				Integer portToSend = serverPorts.get(i);
 				DatagramPacket prePreparePacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
 				Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
 				try{
 					socket.send(prePreparePacket);
+					System.out.printf("Enviei este tipo" + type + " para" + serverPorts.get(i) + "\n");
 				}catch (Exception e){
 					System.out.printf("Cant send PrePrepare message\n");
 				}
@@ -213,6 +206,7 @@ public class SecureServer {
 		//Cycle waitin for quorum
 		while(true){
 			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
+			System.out.printf("Tou à espera deste pedido" + type + "\n");
 			try{
 				socket.receive(messageFromServer);
 			}catch(Exception e){
@@ -251,6 +245,7 @@ public class SecureServer {
 					}
 					// If we reached consensus
 					if(values.get(value).size() >= consensusNumber){
+						System.out.printf("Acordamos este valor " + value + " para " + type + "\n");
 						return value;
 					}
 				}
@@ -278,7 +273,7 @@ public class SecureServer {
 
 		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
 
-		if(valueAgreed != valueDecided){
+		if(!valueAgreed.equals(valueDecided)){
 			return "No Decision";
 		}
 
@@ -287,10 +282,15 @@ public class SecureServer {
 
 	public static String receivePrePrepare(DatagramSocket socket, Integer leaderPort){
 
+		System.out.println("vou esperar por preprepare");
+
 		while(true){
 			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
 			try{
+				System.out.println("Estou à espera");
 				socket.receive(messageFromServer);
+				consensusCounter++;
+				System.out.println("Recebi");
 			}catch(Exception e){
 				System.out.println("Failed to receive message");
 			}
@@ -314,6 +314,9 @@ public class SecureServer {
 			}
 
 			// If we receive message type expected
+			System.out.printf("Tipo de mansagem %s %s\n", message_type.PREPREPARE.toString(), messageType);
+			System.out.printf("Instancia %s %s\n", consensusCounter, instance);
+			System.out.printf("leader %s %s\n", leaderPort, messageFromServer.getPort());
 			if (messageType.equals(message_type.PREPREPARE.toString()) && Integer.parseInt(instance) == consensusCounter
 													&& leaderPort == messageFromServer.getPort()){
 				return value;
@@ -355,6 +358,9 @@ public class SecureServer {
 										DatagramPacket clientPacket, String valueToSend){
 			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 		String tokenToByte = null;
+
+		System.out.println("Vou encriptar token");
+
 		try{
 			tokenToByte = do_RSAEncryption(tokenRcvd, keyPathPriv);
 		}
@@ -370,6 +376,8 @@ public class SecureServer {
 			infoJson.addProperty("token", tokenToByte);
 			responseJson.addProperty("body", valueToSend);
 		}
+
+		System.out.println("Vou encriptar pedido");
 
 		// Send response
 		String serverData = null;
@@ -396,7 +404,7 @@ public class SecureServer {
 	public static void main(String[] args) throws IOException {
 		// Check arguments
 		if (args.length < 3) {
-			System.err.println("Argument(s) missing!");
+			System.err.println("Argument(s) missing! You only provided " + args.length);
 			System.err.printf("Usage: java %s port%n", SecureServer.class.getName());
 			return;
 		}
@@ -448,6 +456,8 @@ public class SecureServer {
 
 				System.out.printf("Received request packet from %s:%d!%n", clientAddress, clientPort);
 
+				System.out.println("Vou desencriptar pedido");
+
 				// Convert request to string
 				try{
 					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, clientLength);
@@ -468,6 +478,8 @@ public class SecureServer {
 				inputValue = body;
 				System.out.printf("Recebi esta mensagem: %s\n", body);
 
+				System.out.println("Vou desencriptar token");
+
 				try{
 					tokenRcvd = do_RSADecryption(token, keyPathClientPublic);
 				}
@@ -487,7 +499,9 @@ public class SecureServer {
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 
-				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket, valueDecided);
+				String response = "Adicionámos este valor à blockchain: " + valueDecided;
+
+				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket, response);
 
 			}
 			else{
