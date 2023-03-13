@@ -211,6 +211,7 @@ public class SecureServer {
 				if (future.isDone() && future.get() != null) {
 					count++;
 					if (count >= majority) {
+						System.out.println("Recebi maioria " + majority);
 						break;
 					}
 				}
