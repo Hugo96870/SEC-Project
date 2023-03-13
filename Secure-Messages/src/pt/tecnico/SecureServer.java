@@ -152,7 +152,7 @@ public class SecureServer {
     }
 
 	public static void sendMessageToAll(message_type type, String valueToSend, List<Integer> serverPorts,
-						Integer port, DatagramSocket socket){
+						Integer port, DatagramSocket socket, Integer consensusNumber){
 
 		InetAddress serverToSend = null;
 
@@ -184,6 +184,10 @@ public class SecureServer {
 
 		//Send message to servers
 		System.out.println("Vou enviar pedidos do tipo: " + type);
+
+		ExecutorService executorService = Executors.newFixedThreadPool(4);
+		List<sendAndReceiveAck> myThreads = new ArrayList<>();
+
 		for(int i = 0; i < serverPorts.size(); i++){
 			//We dont send message to ourselves, only assume we sent and received it
 			if(!port.equals(serverPorts.get(i))){
@@ -192,24 +196,34 @@ public class SecureServer {
 				DatagramPacket packet = new DatagramPacket(Base64.getDecoder().decode(clientData),
 				Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
 
-				ExecutorService executorService = Executors.newSingleThreadExecutor();
-				sendAndReceiveAck myThread = new sendAndReceiveAck(packet, serverPorts.get(i));
-				Future<Integer> future = executorService.submit(myThread);
-				System.out.println("Main thread is waiting for the result...");
-				try{
-					int result = future.get();
-				}catch (Exception e){
-					System.out.println("Thread error");
-				}
-				executorService.shutdown();
+				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i)));
+				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i)));
+				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i)));
+				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i)));
 			}
+		}
+
+		try{
+			List<Future<Integer>> futures = executorService.invokeAll(myThreads);
+			int majority = consensusNumber;
+			int count = 0;
+			for (Future<Integer> future : futures) {
+				if (future.isDone() && future.get() != null) {
+					count++;
+					if (count >= majority) {
+						break;
+					}
+				}
+			}
+		}catch(Exception e){
+			System.out.println("Error launching threads");
 		}
 	}
 
-	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket){
+	public static void broadcast(String text, Integer port, List<Integer> serverPorts, DatagramSocket socket, Integer consensusNumber){
 		consensusCounter++;
 
-		sendMessageToAll(message_type.PREPREPARE, text, serverPorts, port, socket);
+		sendMessageToAll(message_type.PREPREPARE, text, serverPorts, port, socket, consensusNumber);
 	}
 
 	public static String waitForQuorum(Map<String, List<Integer>> values, Integer consensusNumber,
@@ -292,7 +306,7 @@ public class SecureServer {
 		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
 
 		//Send Prepare to all, we assume we received preprepare from ourselves
-		sendMessageToAll(message_type.PREPARE, input, serverports, port, socket);
+		sendMessageToAll(message_type.PREPARE, input, serverports, port, socket, consensusNumber);
 
 		//add value to prepare map
 		prepareValues.put(input, new ArrayList<Integer>());
@@ -302,7 +316,7 @@ public class SecureServer {
 		String valueAgreed = waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
 
 		//Once the quorum is reached, send commit to all
-		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket);
+		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket, consensusNumber);
 
 		//add value to commit map
 		commitValues.put(input, new ArrayList<Integer>());
@@ -388,7 +402,7 @@ public class SecureServer {
 		String valueReceived = receivePrePrepare(socket, leaderPort);
 
 		//send prepare message to all
-		sendMessageToAll(message_type.PREPARE, valueReceived, serverports, port, socket);
+		sendMessageToAll(message_type.PREPARE, valueReceived, serverports, port, socket, consensusNumber);
 
 		//add value of preprepare to map
 		prepareValues.put(valueReceived, new ArrayList<Integer>());
@@ -398,7 +412,7 @@ public class SecureServer {
 		String valueAgreed = waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
 
 		//send commit message to all
-		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket);
+		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket, consensusNumber);
 
 		//add value sent in commits to commit map
 		commitValues.put(valueAgreed, new ArrayList<Integer>());
@@ -423,14 +437,14 @@ public class SecureServer {
 
 			receivePrePrepare(socket, leaderPort);
 
-			sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+			sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket, consensusNumber);
 
 			prepareValues.put("Vou trollar", new ArrayList<Integer>());
 			prepareValues.get("Vou trollar").add(port);
 
 			waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
 
-			sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+			sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket, consensusNumber);
 
 			commitValues.put("Vou trollar no commit", new ArrayList<Integer>());
 			commitValues.get("Vou trollar no commit").add(port);
@@ -451,16 +465,16 @@ public class SecureServer {
 		Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
 		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
 
-		broadcast("Vou trollar no prePrepare", port, serverports, socket);
+		broadcast("Vou trollar no prePrepare", port, serverports, socket, consensusNumber);
 
-		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket, consensusNumber);
 
 		prepareValues.put("Vou trollar", new ArrayList<Integer>());
 		prepareValues.get("Vou trollar").add(port);
 
 		waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
 
-		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket, consensusNumber);
 
 		commitValues.put("Vou trollar no commit", new ArrayList<Integer>());
 		commitValues.get("Vou trollar no commit").add(port);
@@ -483,18 +497,18 @@ public class SecureServer {
 
 		receivePrePrepare(socket, leaderPort);
 
-		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
-		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
-		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket);
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket, consensusNumber);
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket, consensusNumber);
+		sendMessageToAll(message_type.PREPARE, "Vou trollar", serverports, port, socket, consensusNumber);
 
 		prepareValues.put("Vou trollar", new ArrayList<Integer>());
 		prepareValues.get("Vou trollar").add(port);
 
 		waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
 
-		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
-		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
-		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket);
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket, consensusNumber);
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket, consensusNumber);
+		sendMessageToAll(message_type.COMMIT, "Vou trollar no commit", serverports, port, socket, consensusNumber);
 
 		commitValues.put("Vou trollar no commit", new ArrayList<Integer>());
 		commitValues.get("Vou trollar no commit").add(port);
@@ -655,7 +669,7 @@ public class SecureServer {
 /* --------------------------------------------------------------------------------------------------------------------------- */
 	/* ------------------------------------- Broadcast PREPREPARE message ------------------------------ */
 
-				broadcast(inputValue, port, serverPorts, socket);
+				broadcast(inputValue, port, serverPorts, socket, consensusNumber);
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 			
