@@ -4,12 +4,10 @@ import java.net.*;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.security.Key;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -22,7 +20,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
-
+import pt.tecnico.sendAndReceiveAck;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class SecureServer {
 
@@ -166,6 +168,7 @@ public class SecureServer {
 
 		String clientData = null;
 
+		//Encrypt datagram with AES and simetric key
 		try{
 			clientData = do_Encryption(message.toString(), keyPathSecret);
 		}
@@ -179,18 +182,26 @@ public class SecureServer {
 			System.out.printf("Cant resolve host\n");
 		}
 
+		//Send message to servers
+		System.out.println("Vou enviar pedidos do tipo: " + type);
 		for(int i = 0; i < serverPorts.size(); i++){
+			//We dont send message to ourselves, only assume we sent and received it
 			if(!port.equals(serverPorts.get(i))){
 				Integer portToSend = serverPorts.get(i);
-				DatagramPacket prePreparePacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
+				//Create datagram
+				DatagramPacket packet = new DatagramPacket(Base64.getDecoder().decode(clientData),
 				Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
+
+				ExecutorService executorService = Executors.newSingleThreadExecutor();
+				sendAndReceiveAck myThread = new sendAndReceiveAck(packet, serverPorts.get(i));
+				Future<Integer> future = executorService.submit(myThread);
+				System.out.println("Main thread is waiting for the result...");
 				try{
-					socket.send(prePreparePacket);
-					System.out.printf("Enviei esta mensagem " + valueToSend + "neste este tipo" + type +
-								" para" + serverPorts.get(i) + "\n");
+					int result = future.get();
 				}catch (Exception e){
-					System.out.printf("Cant send PrePrepare message\n");
+					System.out.println("Thread error");
 				}
+				executorService.shutdown();
 			}
 		}
 	}
@@ -207,9 +218,26 @@ public class SecureServer {
 		//Cycle waitin for quorum
 		while(true){
 			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
-			System.out.printf("Tou à espera deste pedido" + type + "\n");
+			System.out.printf("Tou à espera deste pedido " + type + "\n");
 			try{
+				//Receive Preprepare
 				socket.receive(messageFromServer);
+				System.out.println("Recebi mesagem de " + type + " "+ messageFromServer.getPort());
+
+				// Create request message
+				JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+				{
+					message.addProperty("value", "ack");
+				}
+
+				String clientData = do_Encryption(message.toString(), keyPathSecret);
+
+				DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
+				Base64.getDecoder().decode(clientData).length,  messageFromServer.getAddress(), messageFromServer.getPort());
+
+				//send ack datagram
+				socket.send(ackPacket);
+				System.out.println("Enviar ack de " + type + " para este: "+ messageFromServer.getPort());
 			}catch(Exception e){
 				System.out.println("Failed to receive message");
 			}
@@ -259,21 +287,28 @@ public class SecureServer {
 	public static String leaderConsensus(DatagramSocket socket, Integer consensusNumber, String input,
 								List<Integer> serverports, Integer port){
 
+		//Create prepare and commit messages maps
 		Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
 		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
 
+		//Send Prepare to all, we assume we received preprepare from ourselves
 		sendMessageToAll(message_type.PREPARE, input, serverports, port, socket);
 
+		//add value to prepare map
 		prepareValues.put(input, new ArrayList<Integer>());
 		prepareValues.get(input).add(port);
 
+		//wait for prepare quorum
 		String valueAgreed = waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
 
+		//Once the quorum is reached, send commit to all
 		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket);
 
+		//add value to commit map
 		commitValues.put(input, new ArrayList<Integer>());
 		commitValues.get(input).add(port);
 
+		//wait for commit quorum
 		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
 
 		if(!valueAgreed.equals(valueDecided)){
@@ -291,14 +326,31 @@ public class SecureServer {
 			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
 			try{
 				System.out.println("Estou à espera");
+				//Receive Preprepare
 				socket.receive(messageFromServer);
+
+				// Create request message
+				JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+				{
+					message.addProperty("value", "ack");
+				}
+
+				String clientData = do_Encryption(message.toString(), keyPathSecret);
+
+				DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
+				Base64.getDecoder().decode(clientData).length,  messageFromServer.getAddress(), messageFromServer.getPort());
+
+				//send ack datagram
+				socket.send(ackPacket);
 				System.out.println("Recebi");
+
 			}catch(Exception e){
 				System.out.println("Failed to receive message");
 			}
 			String clientText = null;
 			byte[] clientData = messageFromServer.getData();
 
+			//Decrypt message received with aes and simetric key
 			try{
 				clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, messageFromServer.getLength());
 			}
@@ -316,9 +368,6 @@ public class SecureServer {
 			}
 
 			// If we receive message type expected
-			System.out.printf("Tipo de mansagem %s %s\n", message_type.PREPREPARE.toString(), messageType);
-			System.out.printf("Instancia %s %s\n", consensusCounter, instance);
-			System.out.printf("leader %s %s\n", leaderPort, messageFromServer.getPort());
 			if (messageType.equals(message_type.PREPREPARE.toString()) && Integer.parseInt(instance) == consensusCounter + 1
 													&& leaderPort == messageFromServer.getPort()){
 				consensusCounter++;
@@ -331,23 +380,31 @@ public class SecureServer {
 	public static String normalConsensus(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
 								List<Integer> serverports, Integer port){
 
+		//Create commit and prepare maps
 		Map<String, List<Integer>> prepareValues = new HashMap<String, List<Integer>>();
 		Map<String, List<Integer>> commitValues = new HashMap<String, List<Integer>>();
 
+		//Wait for preprepare message
 		String valueReceived = receivePrePrepare(socket, leaderPort);
 
+		//send prepare message to all
 		sendMessageToAll(message_type.PREPARE, valueReceived, serverports, port, socket);
 
+		//add value of preprepare to map
 		prepareValues.put(valueReceived, new ArrayList<Integer>());
 		prepareValues.get(valueReceived).add(port);
 
+		//wait for prepare quorum
 		String valueAgreed = waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket);
 
+		//send commit message to all
 		sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket);
 
+		//add value sent in commits to commit map
 		commitValues.put(valueAgreed, new ArrayList<Integer>());
 		commitValues.get(valueAgreed).add(port);
 
+		//wait for commit quorum
 		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
 
 		if(valueAgreed != valueDecided){
