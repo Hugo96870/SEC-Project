@@ -159,7 +159,7 @@ public class SecureClient {
 		sc.close();
 
 		// Create socket
-		DatagramSocket socket = new DatagramSocket();
+		DatagramSocket socket = new DatagramSocket(10000);
 
         // Create request message
 		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();

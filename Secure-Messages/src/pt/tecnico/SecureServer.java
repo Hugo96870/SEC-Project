@@ -622,7 +622,7 @@ public class SecureServer {
 				DatagramPacket clientPacket = new DatagramPacket(buf, buf.length);
 				while(true){
 					socket.receive(clientPacket);
-					if(!serverPorts.contains(clientPacket.getPort())){
+					if(clientPacket.getPort() == 10000){
 						break;
 					}
 				}
