@@ -8,7 +8,7 @@ Como objetivo do projeto queremos tranformar pedidos do cliente para pedidos no 
 
 Este serviço da blockchain tem que ser tolerável a faltas e a comportamentos bizantinos, ou seja, tem que ser confiável.
 
-Para esta primeira fase, um pedido do cliente resume-se a mandar um cadeira de caracteres para ser adicionada à blockchain.
+Para esta primeira fase, um pedido do cliente resume-se a mandar um cadeia de caracteres para ser adicionada à blockchain.
 
 Este projeto foi implementado seguindo o algoritmo [The Istanbul BFT Consensus Algorithm](https://arxiv.org/pdf/2002.03613.pdf).
 
