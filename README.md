@@ -1,14 +1,12 @@
 # SEC-Project
 
-## Descrição geral
-
 Neste projeto criamos um sistema distribuído de membros de uma blockchain que são responsáveis por manter o estado da blockchain e por, todos em conjunto, implementarem o serviço da blockchain.
 
 Como objetivo do projeto queremos tranformar pedidos do cliente para pedidos no serviço da blockchain.
 
 Este serviço da blockchain tem que ser tolerável a faltas e a comportamentos bizantinos, ou seja, tem que ser confiável.
 
-Para esta primeira fase, um pedido do cliente resume-se a mandar um cadeia de carateres para ser adicionada à blockchain.
+Para esta primeira fase, um pedido do cliente resume-se a mandar um cadeia de caracteres para ser adicionada à blockchain.
 
 Este projeto foi implementado seguindo o algoritmo [The Istanbul BFT Consensus Algorithm](https://arxiv.org/pdf/2002.03613.pdf).
 
@@ -20,7 +18,7 @@ Para o design do projeto optámos por implementar uma rede distribuída com as s
  - Existem N = 3 * F + 1 servidores na rede, F correspondendo ao número de servidores não corretos (com comportamento bizantino).
  - Existe um servidor líder que é sempre correto.
  - Qualquer cliente que se ligue à rede distribuída irá fazer pedidos ao servidor líder.
- - Os pedidos dos clientes são tratados de forma sequencial, ou seja, o serviço só adiciona uma cadeia de carateres à blockchain após a última já ter sido adicionada.
+ - Os pedidos dos clientes são tratados de forma sequencial, ou seja, o serviço só adiciona uma cadeia de caracteres à blockchain após a última já ter sido adicionada.
 
  ----
 
@@ -40,7 +38,7 @@ Para o design do projeto optámos por implementar uma rede distribuída com as s
  ----
  ## Funcionamento do projeto
 
-No funcionamento do sistema distribuído, um cliente liga-se ao serviço da blockchain (através do servidor líder) e envia uma mensagem contendo a cadeia de carateres que deseja adicionar à blockchain.
+No funcionamento do sistema distribuído, um cliente liga-se ao serviço da blockchain (através do servidor líder) e envia uma mensagem contendo a cadeia de caracteres que deseja adicionar à blockchain.
 
 Posto isto, o serviço da blockchain segue o algoritmo [The Istanbul BFT Consensus Algorithm](https://arxiv.org/pdf/2002.03613.pdf) de maneira a assegurar o correto funcionamento do próprio.
 
