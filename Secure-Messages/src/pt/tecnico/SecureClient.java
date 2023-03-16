@@ -124,12 +124,12 @@ public class SecureClient {
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = 65_507;
 
-	public static void main(String[] args) throws IOException {
+	public static String main(String[] args) throws IOException {
 		// Check arguments
 		if (args.length < 2) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s host port%n", SecureClient.class.getName());
-			return;
+			return "erro";
 		}
 
         final String keyPathPublic = "keys/serverPub.der";
@@ -154,9 +154,12 @@ public class SecureClient {
 			System.out.println(e.getMessage());
 		}
 
+		/*
 		Scanner sc = new Scanner(System.in);
 		String sentence = sc.nextLine();
 		sc.close();
+		*/
+		String sentence = "olaaaa";
 
 		// Create socket
 		DatagramSocket socket = new DatagramSocket(10000);
@@ -208,8 +211,6 @@ public class SecureClient {
 			body = responseJson.get("body").getAsString();
 		}
 
-		System.out.printf("Recebi esta mensagem: %s\n", body);
-
 		try{
 			tokenRcvd = do_RSADecryption(tokenRcvd, keyPathPublic);
 		}
@@ -219,9 +220,11 @@ public class SecureClient {
 
 		System.out.printf("Identity validated\n");
 
+		System.out.printf(body);
+
 		// Close socket
 		socket.close();
-		System.out.println("Socket closed");
-	}
 
+		return body;
+	}
 }

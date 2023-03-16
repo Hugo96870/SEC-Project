@@ -682,7 +682,7 @@ public class SecureServer {
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 
-				String response = "Adicionámos este valor à blockchain: " + valueDecided;
+				String response = valueDecided + "\n";
 
 				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket, response);
 
