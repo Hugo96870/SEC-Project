@@ -1,14 +1,12 @@
 # SEC-Project
 
-## Descrição geral
-
 Neste projeto criamos um sistema distribuído de membros de uma blockchain que são responsáveis por manter o estado da blockchain e por, todos em conjunto, implementarem o serviço da blockchain.
 
 Como objetivo do projeto queremos tranformar pedidos do cliente para pedidos no serviço da blockchain.
 
 Este serviço da blockchain tem que ser tolerável a faltas e a comportamentos bizantinos, ou seja, tem que ser confiável.
 
-Para esta primeira fase, um pedido do cliente resume-se a mandar um cadeira de caracteres para ser adicionada à blockchain.
+Para esta primeira fase, um pedido do cliente resume-se a mandar um cadeia de caracteres para ser adicionada à blockchain.
 
 Este projeto foi implementado seguindo o algoritmo [The Istanbul BFT Consensus Algorithm](https://arxiv.org/pdf/2002.03613.pdf).
 
@@ -16,7 +14,7 @@ Este projeto foi implementado seguindo o algoritmo [The Istanbul BFT Consensus A
 
 ## Pressupostos do projeto
 
-Para o design do projeto optamos por implementar um rede distribuída com as seguintes caracteristicas:
+Para o design do projeto optámos por implementar uma rede distribuída com as seguintes caraterísticas:
  - Existem N = 3 * F + 1 servidores na rede, F correspondendo ao número de servidores não corretos (com comportamento bizantino).
  - Existe um servidor líder que é sempre correto.
  - Qualquer cliente que se ligue à rede distribuída irá fazer pedidos ao servidor líder.
@@ -35,16 +33,16 @@ Para o design do projeto optamos por implementar um rede distribuída com as seg
         - SecureClient: Código do cliente.
         - SecureServer: Código do server.
         - sendAndReceiveAck: Código de funções auxiliares a serem chamadas por threads criadas pelo servidor.
-    - src/test/java: Pasta com o Código dos testes criados em Junit.
+    - src/test/java: Pasta com o código dos testes criados em Junit.
     - pom.xml: ficheiro de confiiguração do maven
  ----
  ## Funcionamento do projeto
 
-No funcionamento do sistema distribuído, um cliente liga-se ao serviço da blockchain (através do servidor líder) e envia uma mensagem contendo a cadeira de caracteres que deseja adicionar à blockchain.
+No funcionamento do sistema distribuído, um cliente liga-se ao serviço da blockchain (através do servidor líder) e envia uma mensagem contendo a cadeia de caracteres que deseja adicionar à blockchain.
 
-Posto isto, o serviço do blockchain segue o algoritmo [The Istanbul BFT Consensus Algorithm](https://arxiv.org/pdf/2002.03613.pdf) de maneira a assegurar o correto funcionamento do próprio.
+Posto isto, o serviço da blockchain segue o algoritmo [The Istanbul BFT Consensus Algorithm](https://arxiv.org/pdf/2002.03613.pdf) de maneira a assegurar o correto funcionamento do próprio.
 
-Após o algoritmo terminar, o servidor líder responde ao cliente com uma confirmação de que a sua cadeia de caracteres foi adicionada à blockchain e a execução termina.
+Após o algoritmo terminar, o servidor líder responde ao cliente com uma confirmação de que a sua cadeia de carateres foi adicionada à blockchain e a execução termina.
 
 ---
 
@@ -63,9 +61,15 @@ mvn compile exec:java -Dmainclass=pt.tecnico.SecureServer -Dexec.args="N Y Z K"
     - K é o estado do servidor que está a lançar, K pode ser um dos seguintes valores:
         - L: para indicar que o processo é o líder
         - N: Para indicar que o processo será um processo correto, mas não o líder.
+<<<<<<< HEAD
         - B-PC: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT.
         - B-PP: para indicar que o processo terá um comportamento bizantino em que irá enviar mensagen de PREPREPARE embora não seja o líder.
         - B-PC-T: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT e irá enviar várias mensagens de PREPARE E COMMIT fora de ordem.
+=======
+        - P-PC: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto nas mensagens de PREPARE e COMMIT.
+        - P-PP: para indicar que o processo terá um comportamento bizantino em que irá enviar uma mensagem de PREPREPARE embora não seja o líder.
+        - P-PC-T: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto nas mensagens de PREPARE e COMMIT e irá enviar várias mensagens de PREPARE E COMMIT fora de ordem.
+>>>>>>> 209665ac124a776d350a06979f561a75e652d470
 
 Para lançar um processo cliente deverá executar o seguinte comando num terminal na diretoria que contém o ficheiro pom.xml:
 ```
