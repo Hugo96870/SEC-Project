@@ -2,6 +2,7 @@ package pt.tecnico;
 
 import java.io.*;
 import java.net.*;
+import java.net.http.HttpResponse.BodyHandler;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.*;
@@ -124,12 +125,12 @@ public class SecureClient {
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = 65_507;
 
-	public static String main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException {
 		// Check arguments
-		if (args.length < 2) {
+		if (args.length < 3) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s host port%n", SecureClient.class.getName());
-			return "erro";
+			System.exit(1);
 		}
 
         final String keyPathPublic = "keys/serverPub.der";
@@ -143,6 +144,7 @@ public class SecureClient {
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
 		final int serverPort = Integer.parseInt(args[1]);
+		final String sentence = args[2];
 
         Integer token = 0;
 		
@@ -159,8 +161,8 @@ public class SecureClient {
 		String sentence = sc.nextLine();
 		sc.close();
 		*/
-		String sentence = "olaaaa";
 
+		
 		// Create socket
 		DatagramSocket socket = new DatagramSocket(10000);
 
@@ -220,11 +222,17 @@ public class SecureClient {
 
 		System.out.printf("Identity validated\n");
 
-		System.out.printf(body);
-
 		// Close socket
 		socket.close();
 
-		return body;
+		System.out.printf(body);
+
+		String finalValue = body.substring(0, body.length() - 1);
+
+		if(!sentence.equals(finalValue)){
+			System.out.println("Vou sair com 1");
+			System.exit(1);
+		}
+		return;
 	}
 }

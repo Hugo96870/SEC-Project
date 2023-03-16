@@ -13,4 +13,4 @@ process = "8000"
 #subprocess.Popen('mvn compile exec:java -Dmainclass=pt.tecnico.SecureClient -Dexec.args="localhost 8000"', shell=True)
 
 #
-#subprocess.call(['mvn', 'compile', 'exec:java', '-Dmainclass=pt.tecnico.SecureServer', "-Dexec.args='4 8000 8000'"])
+subprocess.call(['mvn', 'compile', 'exec:java', '-Dmainclass=pt.tecnico.SecureServer', '-Dexec.args=\"4 8000 8000 N\"'])

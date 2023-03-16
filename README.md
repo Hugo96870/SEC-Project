@@ -61,15 +61,9 @@ mvn compile exec:java -Dmainclass=pt.tecnico.SecureServer -Dexec.args="N Y Z K"
     - K é o estado do servidor que está a lançar, K pode ser um dos seguintes valores:
         - L: para indicar que o processo é o líder
         - N: Para indicar que o processo será um processo correto, mas não o líder.
-<<<<<<< HEAD
         - B-PC: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT.
         - B-PP: para indicar que o processo terá um comportamento bizantino em que irá enviar mensagen de PREPREPARE embora não seja o líder.
         - B-PC-T: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT e irá enviar várias mensagens de PREPARE E COMMIT fora de ordem.
-=======
-        - P-PC: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto nas mensagens de PREPARE e COMMIT.
-        - P-PP: para indicar que o processo terá um comportamento bizantino em que irá enviar uma mensagem de PREPREPARE embora não seja o líder.
-        - P-PC-T: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto nas mensagens de PREPARE e COMMIT e irá enviar várias mensagens de PREPARE E COMMIT fora de ordem.
->>>>>>> 209665ac124a776d350a06979f561a75e652d470
 
 Para lançar um processo cliente deverá executar o seguinte comando num terminal na diretoria que contém o ficheiro pom.xml:
 ```

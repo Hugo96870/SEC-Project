@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: test.java.MyTests
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 25.944 s <<< FAILURE! - in test.java.MyTests
+test1  Time elapsed: 10.16 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
+	at test.java.MyTests.test1(MyTests.java:60)
+
+test2  Time elapsed: 10.013 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
+	at test.java.MyTests.test2(MyTests.java:110)
+
+test3  Time elapsed: 5.729 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
+	at test.java.MyTests.test3(MyTests.java:168)
+

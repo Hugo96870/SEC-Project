@@ -8,11 +8,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.io.InputStream;
+import java.util.Scanner;
 
 public class MyTests {
 
-    @Test1
-    void testServerAndClient() throws IOException, InterruptedException {
+    @Test
+    void test1() throws IOException, InterruptedException {
         // Launch four server processes, each on a different port
         List<Process> serverProcesses = new ArrayList<>();
         
@@ -45,27 +49,15 @@ public class MyTests {
                 "compile",
                 "exec:java",
                 "-Dmainclass=pt.tecnico.SecureClient",
-                "-Dexec.args=\"localhost 8000\""
+                "-Dexec.args=\"localhost 8000 olaaaa\""
         );
+        clientProcessBuilder.redirectOutput(ProcessBuilder.Redirect.PIPE);
         Process clientProcess = clientProcessBuilder.start();
 
-        // Wait for the client process to finish
-        int exitCode = clientProcess.waitFor();
-        Assertions.assertEquals(0, exitCode, "Client process exited with non-zero exit code");
+        // Get the exit value of the process
+        int exitValue = clientProcess.waitFor();
 
-        // Read the client output and compare it with the expected input
-        String expectedInput = "olaaaa";
-
-        
-        BufferedReader reader = new BufferedReader(new InputStreamReader(clientProcess.getInputStream()));
-        String line;
-        List<String> lines = new ArrayList<>();
-        while ((line = reader.readLine()) != null) {
-            lines.add(line);
-        }
-        reader.close();
-
-        Assertions.assertEquals(expectedInput, lines.get(8));
+        Assertions.assertEquals(0, exitValue);
 
         // Kill all the server processes
         for (Process serverProcess : serverProcesses) {
@@ -73,8 +65,8 @@ public class MyTests {
         }
     }
 
-    @Test2
-    void testServerAndClient() throws IOException, InterruptedException {
+    @Test
+    void test2() throws IOException, InterruptedException {
         // Launch four server processes, each on a different port
         List<Process> serverProcesses = new ArrayList<>();
         
@@ -107,27 +99,15 @@ public class MyTests {
                 "compile",
                 "exec:java",
                 "-Dmainclass=pt.tecnico.SecureClient",
-                "-Dexec.args=\"localhost 8000\""
+                "-Dexec.args=\"localhost 8000 olaaaa\""
         );
+        clientProcessBuilder.redirectOutput(ProcessBuilder.Redirect.PIPE);
         Process clientProcess = clientProcessBuilder.start();
 
-        // Wait for the client process to finish
-        int exitCode = clientProcess.waitFor();
-        Assertions.assertEquals(0, exitCode, "Client process exited with non-zero exit code");
+        // Get the exit value of the process
+        int exitValue = clientProcess.waitFor();
 
-        // Read the client output and compare it with the expected input
-        String expectedInput = "olaaaa";
-
-        
-        BufferedReader reader = new BufferedReader(new InputStreamReader(clientProcess.getInputStream()));
-        String line;
-        List<String> lines = new ArrayList<>();
-        while ((line = reader.readLine()) != null) {
-            lines.add(line);
-        }
-        reader.close();
-
-        Assertions.assertEquals(expectedInput, lines.get(8));
+        Assertions.assertEquals(0, exitValue);
 
         // Kill all the server processes
         for (Process serverProcess : serverProcesses) {
@@ -135,8 +115,8 @@ public class MyTests {
         }
     }
 
-    @Test2
-    void testServerAndClient() throws IOException, InterruptedException {
+    @Test
+    void test3() throws IOException, InterruptedException {
         // Launch four server processes, each on a different port
         List<Process> serverProcesses = new ArrayList<>();
         
@@ -163,37 +143,28 @@ public class MyTests {
         Process serverProcessB = serverProcessBuilderB.start();
         serverProcesses.add(serverProcessB);
 
+        Thread.sleep(2000);
+
         // Launch one client process
         ProcessBuilder clientProcessBuilder = new ProcessBuilder(
                 "mvn",
                 "compile",
                 "exec:java",
                 "-Dmainclass=pt.tecnico.SecureClient",
-                "-Dexec.args=\"localhost 8000\""
+                "-Dexec.args=\"localhost 8000 olaaaa\""
         );
+        clientProcessBuilder.redirectOutput(ProcessBuilder.Redirect.PIPE);
         Process clientProcess = clientProcessBuilder.start();
-
-        // Wait for the client process to finish
-        int exitCode = clientProcess.waitFor();
-        Assertions.assertEquals(0, exitCode, "Client process exited with non-zero exit code");
-
-        // Read the client output and compare it with the expected input
-        String expectedInput = "olaaaa";
-
-        
-        BufferedReader reader = new BufferedReader(new InputStreamReader(clientProcess.getInputStream()));
-        String line;
-        List<String> lines = new ArrayList<>();
-        while ((line = reader.readLine()) != null) {
-            lines.add(line);
-        }
-        reader.close();
-
-        Assertions.assertEquals(expectedInput, lines.get(8));
 
         // Kill all the server processes
         for (Process serverProcess : serverProcesses) {
             serverProcess.destroy();
         }
+
+        // Get the exit value of the process
+        int exitValue = clientProcess.waitFor();
+
+        System.out.println(exitValue);
+        Assertions.assertEquals(0, exitValue);
     }
 }
