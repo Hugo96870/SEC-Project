@@ -2,6 +2,7 @@ package pt.tecnico;
 
 import java.net.*;
 import java.io.IOException;
+import java.io.ObjectInputStream.GetField;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.security.KeyFactory;
@@ -25,6 +26,10 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 public class SecureServer {
 
@@ -41,6 +46,8 @@ public class SecureServer {
 
 	private static byte[] buf = new byte[BUFFER_SIZE];
 
+	private static final Charset UTF_8 = StandardCharsets.UTF_8;
+
 	private static Integer consensusCounter = 0;
 
 	enum message_type{
@@ -48,6 +55,17 @@ public class SecureServer {
 		PREPARE,
 		COMMIT;
 	}
+
+	public static byte[] digest(byte[] input, String algorithm) {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance(algorithm);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalArgumentException(e);
+        }
+        byte[] result = md.digest(input);
+        return result;
+    }
 
 	//Key paths
 	private static final String keyPathClientPublic = "keys/userPub.der";
@@ -187,9 +205,22 @@ public class SecureServer {
 				}
 				String clientData = null;
 
+				//Create hmac to assure integrity
+				byte[] hmac = digest(message.toString().getBytes(UTF_8), "SHA3-256");
+
+
+				//ENVIAR HMAC EM BASE 64
+				JsonObject messageWithHMAC = JsonParser.parseString("{}").getAsJsonObject();
+				{
+					messageWithHMAC.addProperty("payload", message.toString());
+					messageWithHMAC.addProperty("hmac", hmac.toString());
+				}
+
+				System.out.println("Vou enviar isto:" + messageWithHMAC.toString());
+
 				//Encrypt datagram with AES and simetric key
 				try{
-					clientData = do_Encryption(message.toString(), keyPathSecret);
+					clientData = do_Encryption(messageWithHMAC.toString(), keyPathSecret);
 				}
 				catch (Exception e){
 					System.out.printf("Encryption failed\n");
@@ -243,15 +274,25 @@ public class SecureServer {
 				catch(Exception e){
 					System.out.println(e);
 				}
-	
+
+				//Parse Json with payload and hmac
+				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+				String hmac = null, receivedFromJson = null;
+				{
+					hmac = received.get("hmac").getAsString();
+					receivedFromJson = received.get("payload").getAsString();
+				}
+
 				// Parse JSON and extract arguments
-				JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
+				JsonObject requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
 				{
 					messageType = requestJson.get("messageType").getAsString();
 					instance = requestJson.get("instance").getAsString();
 					value = requestJson.get("value").getAsString();
 					idMainProcess = requestJson.get("idMainProcess").getAsString();
 				}
+
+				//verify integrity by cheching HMAC
 
 				System.out.println("Recebi mesagem de " + type + " "+ 8000 + Integer.parseInt(idMainProcess));
 
@@ -364,8 +405,16 @@ public class SecureServer {
 					System.out.println(e);
 				}
 
+				//Parse json with payload and Hmac
+				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+				String hmac = null, receivedFromJson = null;
+				{
+					hmac = received.get("hmac").getAsString();
+					receivedFromJson = received.get("payload").getAsString();
+				}
+
 				// Parse JSON and extract arguments
-				JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
+				JsonObject requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
 				String messageType = null, instance = null, value = null, idMainProcess = null;
 				{
 					messageType = requestJson.get("messageType").getAsString();
@@ -373,6 +422,8 @@ public class SecureServer {
 					value = requestJson.get("value").getAsString();
 					idMainProcess = requestJson.get("idMainProcess").getAsString();
 				}
+
+				//verify integrity by cheching HMAC
 
 				//send ack datagram
 				if(leaderPort == 8000 + Integer.parseInt(idMainProcess)){

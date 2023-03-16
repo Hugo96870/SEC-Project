@@ -2,7 +2,6 @@ package pt.tecnico;
 
 import java.io.*;
 import java.net.*;
-import java.net.http.HttpResponse.BodyHandler;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.*;
@@ -13,7 +12,6 @@ import com.google.gson.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Base64;
-import java.util.Scanner;
 
 public class SecureClient {
 
