@@ -1,19 +1,56 @@
 package pt.tecnico;
 
-import java.io.*;
 import java.net.*;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.security.*;
 import java.security.spec.*;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
-import com.google.gson.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Base64;
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.security.KeyFactory;
+import java.security.spec.PKCS8EncodedKeySpec;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 public class SecureClient {
+
+	private static final Charset UTF_8 = StandardCharsets.UTF_8;
+
+	public static byte[] digest(byte[] input, String algorithm) {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance(algorithm);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalArgumentException(e);
+        }
+        byte[] result = md.digest(input);
+        return result;
+    }
+
+	public static boolean checkIntegrity(String hmac, JsonObject requestJson){
+		//Verify integrity with hmac
+		byte[] hmacToCheck = null;
+		try{
+			hmacToCheck = digest(requestJson.toString().getBytes(UTF_8), "SHA3-256");
+		}catch (IllegalArgumentException e){
+			System.out.println("Failed to hash value");
+		}
+
+		if(Base64.getEncoder().encodeToString(hmacToCheck).equals(hmac)){
+			System.out.println("Integrity validated");
+			return true;
+		}
+		return false;
+	}
 
     public static String do_Encryption(String plainText, String path) throws Exception
     {
@@ -33,8 +70,6 @@ public class SecureClient {
 
 		// Encode the encrypted byte array to Base64 encoding
 		String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
-
-		System.out.println("Encryptei com AES");
 
 		return ciphertext;
     }
@@ -60,8 +95,6 @@ public class SecureClient {
 
         // Convert the decrypted byte array to a string
         String plaintext = new String(plaintextBytes, "UTF-8");
-
-		System.out.println("Desencryptei com AES");
 
 		return plaintext;
     }
@@ -89,8 +122,6 @@ public class SecureClient {
         // Encode the encrypted byte array into a string using Base64 encoding
         String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
 
-		System.out.println("Encryptei com RSA");
-
 		return ciphertext;
     }
 
@@ -115,8 +146,6 @@ public class SecureClient {
         // Convert the decrypted byte array to a string
         String plaintext = new String(plaintextBytes, "UTF-8");
 
-		System.out.println("Desencryptei com RSA");
-
 		return plaintext;
     }
 
@@ -136,8 +165,6 @@ public class SecureClient {
 		final String keyPathSecret = "keys/secret.key";
 
 		String tokenToString = null;
-		String clientData = null;
-		String serverText = null;
 
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
@@ -174,12 +201,28 @@ public class SecureClient {
 			requestJson.addProperty("body", bodyText);
 		}
 
-		// Send request
+		//Create hmac to assure integrity
+		byte[] hmac = null;
 		try{
-			clientData = do_Encryption(requestJson.toString(), keyPathSecret);
+			hmac = digest(requestJson.toString().getBytes(UTF_8), "SHA3-256");
+		}catch (IllegalArgumentException e){
+			System.out.println("Failed to hash value");
+		}
+
+		//ENVIAR HMAC EM BASE 64
+		JsonObject messageWithHMAC = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			messageWithHMAC.addProperty("payload", requestJson.toString());
+			messageWithHMAC.addProperty("hmac", Base64.getEncoder().encodeToString(hmac));
+		}
+
+		String clientData = null;
+		//Encrypt datagram with AES and simetric key
+		try{
+			clientData = do_Encryption(messageWithHMAC.toString(), keyPathSecret);
 		}
 		catch (Exception e){
-			System.out.printf("Encryption failed\n");
+			System.out.printf("Encryption with AES failed\n");
 		}
 
 		DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, serverAddress, serverPort);
@@ -189,21 +232,41 @@ public class SecureClient {
 		// Receive response
 		byte[] serverData = new byte[BUFFER_SIZE];
 		DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length);
-		System.out.println("Wait for response packet...");
 		socket.receive(serverPacket);
 
 		System.out.println("Received response");
 
-		// Convert response to string
+		String serverText = null;
 		try{
-			serverText = do_Decryption(Base64.getEncoder().encodeToString(serverPacket.getData()), keyPathSecret, serverPacket.getLength());
+			serverText = do_Decryption(Base64.getEncoder().encodeToString(serverPacket.getData()), keyPathSecret, clientPacket.getLength());
 		}
 		catch(Exception e){
-			System.out.printf("Decryption failed\n");
+			System.out.println("Decryption with AES failed");
+		}
+
+		//Parse Json with payload and hmac
+		JsonObject received = JsonParser.parseString(serverText).getAsJsonObject();
+		String hmacRcvd = null, receivedFromJson = null;
+		{
+			hmacRcvd = received.get("hmac").getAsString();
+			receivedFromJson = received.get("payload").getAsString();
 		}
 
 		// Parse JSON and extract arguments
-		JsonObject responseJson = JsonParser.parseString(serverText).getAsJsonObject();
+		JsonObject responseJson = null;
+		try{
+			responseJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+		} catch (Exception e){
+			System.out.println("Failed to parse Json received");
+		}
+
+		boolean integrityCheck = checkIntegrity(hmacRcvd, responseJson);
+
+		if(!integrityCheck){
+			System.out.println("Integrity violated");
+		}
+
+		// Parse JSON and extract arguments
 		String body = null, tokenRcvd = null;
 		{
 			JsonObject infoJson = responseJson.getAsJsonObject("info");
@@ -231,6 +294,9 @@ public class SecureClient {
 			System.out.println("Vou sair com 1");
 			System.exit(1);
 		}
-		return;
+		else{
+			System.out.println("Vou sair com 0");
+			System.exit(0);
+		}
 	}
 }

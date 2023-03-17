@@ -2,7 +2,6 @@ package pt.tecnico;
 
 import java.net.*;
 import java.io.IOException;
-import java.io.ObjectInputStream.GetField;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.security.KeyFactory;
@@ -21,11 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
-import pt.tecnico.sendAndReceiveAck;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.nio.charset.Charset;
@@ -169,12 +165,25 @@ public class SecureServer {
 		return plaintext;
     }
 
+	public static boolean checkIntegrity(String hmac, JsonObject requestJson){
+		//Verify integrity with hmac
+		byte[] hmacToCheck = null;
+		try{
+			hmacToCheck = digest(requestJson.toString().getBytes(UTF_8), "SHA3-256");
+		}catch (IllegalArgumentException e){
+			System.out.println("Failed to hash value");
+		}
+
+		if(Base64.getEncoder().encodeToString(hmacToCheck).equals(hmac)){
+			return true;
+		}
+		return false;
+	}
+
 	public static void sendMessageToAll(message_type type, String valueToSend, List<Integer> serverPorts,
 						Integer port, DatagramSocket socket, Integer consensusNumber){
 
 		InetAddress serverToSend = null;
-
-		System.out.printf("Vou enviar este tipo" + type + "\n");
 
 		try{
 			serverToSend = InetAddress.getByName("localhost");
@@ -196,40 +205,52 @@ public class SecureServer {
 				Integer portToSend = serverPorts.get(i);
 
 				// Create request message
-				JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
-				{
-					message.addProperty("messageType", type.name());
-					message.addProperty("instance", consensusCounter.toString());
-					message.addProperty("value", valueToSend);
-					message.addProperty("idMainProcess", ((Integer)(port % basePort)).toString());
+				JsonObject message = null;
+				try{
+					message = JsonParser.parseString("{}").getAsJsonObject();
+					{
+						message.addProperty("messageType", type.name());
+						message.addProperty("instance", consensusCounter.toString());
+						message.addProperty("value", valueToSend);
+						message.addProperty("idMainProcess", ((Integer)(port % basePort)).toString());
+					}
+				} catch (Exception e){
+					System.out.println("Failed to parse Json and arguments");
 				}
-				String clientData = null;
+			
 
 				//Create hmac to assure integrity
-				byte[] hmac = digest(message.toString().getBytes(UTF_8), "SHA3-256");
-
+				byte[] hmac = null;
+				try{
+					hmac = digest(message.toString().getBytes(UTF_8), "SHA3-256");
+				}catch (IllegalArgumentException e){
+					System.out.println("Failed to hash value");
+				}
 
 				//ENVIAR HMAC EM BASE 64
 				JsonObject messageWithHMAC = JsonParser.parseString("{}").getAsJsonObject();
 				{
 					messageWithHMAC.addProperty("payload", message.toString());
-					messageWithHMAC.addProperty("hmac", hmac.toString());
+					messageWithHMAC.addProperty("hmac", Base64.getEncoder().encodeToString(hmac));
 				}
 
-				System.out.println("Vou enviar isto:" + messageWithHMAC.toString());
-
+				String clientData = null;
 				//Encrypt datagram with AES and simetric key
 				try{
 					clientData = do_Encryption(messageWithHMAC.toString(), keyPathSecret);
 				}
 				catch (Exception e){
-					System.out.printf("Encryption failed\n");
+					System.out.printf("Encryption with AES failed\n");
 				}
 
 				//Create datagram
-
-				DatagramPacket packet = new DatagramPacket(Base64.getDecoder().decode(clientData),
-				Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
+				DatagramPacket packet = null;
+				try{
+					packet = new DatagramPacket(Base64.getDecoder().decode(clientData),
+					Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
+				} catch (Exception e){
+					System.out.println("Failed to create Datagram");
+				}
 
 				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i)));
 
@@ -237,7 +258,7 @@ public class SecureServer {
 		}
 
 		try{
-			for(int i = 0; i < serverPorts.size(); i++){
+			for(int i = 0; i < serverPorts.size() - 1; i++){
 				executorService.submit(myThreads.get(i));
 			}
 		}catch(Exception e){
@@ -254,8 +275,6 @@ public class SecureServer {
 	public static String waitForQuorum(Map<String, List<Integer>> values, Integer consensusNumber,
 							message_type type, DatagramSocket socket){
 
-		System.out.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-		
 		//Cycle waitin for quorum
 		String messageType = null, instance = null, value = null, idMainProcess = null;
 		while(true){
@@ -272,7 +291,7 @@ public class SecureServer {
 					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, messageFromServer.getLength());
 				}
 				catch(Exception e){
-					System.out.println(e);
+					System.out.println("Decryption with AES failed");
 				}
 
 				//Parse Json with payload and hmac
@@ -284,56 +303,75 @@ public class SecureServer {
 				}
 
 				// Parse JSON and extract arguments
-				JsonObject requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
-				{
-					messageType = requestJson.get("messageType").getAsString();
-					instance = requestJson.get("instance").getAsString();
-					value = requestJson.get("value").getAsString();
-					idMainProcess = requestJson.get("idMainProcess").getAsString();
+				JsonObject requestJson = null;
+				try{
+					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+				} catch (Exception e){
+					System.out.println("Failed to parse Json received");
 				}
 
-				//verify integrity by cheching HMAC
+				boolean integrityCheck = checkIntegrity(hmac, requestJson);
 
-				System.out.println("Recebi mesagem de " + type + " "+ 8000 + Integer.parseInt(idMainProcess));
-
-				// Create request message
-				JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
-				{
-					message.addProperty("value", "ack");
+				if(!integrityCheck){
+					System.out.println("Integrity violated");
 				}
+				else{
+					try{
+						{
+							messageType = requestJson.get("messageType").getAsString();
+							instance = requestJson.get("instance").getAsString();
+							value = requestJson.get("value").getAsString();
+							idMainProcess = requestJson.get("idMainProcess").getAsString();
+						}
+					} catch (Exception e){
+						System.out.println("Failed to extract arguments from Json payload");
+					}
 
-				String clientDataToSend = do_Encryption(message.toString(), keyPathSecret);
+	
+					// Create request message
+					JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+					{
+						message.addProperty("value", "ack");
+					}
 
-				DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
-				Base64.getDecoder().decode(clientDataToSend).length,  messageFromServer.getAddress(), messageFromServer.getPort());
+					String clientDataToSend = null;
+					try{
+						clientDataToSend = do_Encryption(message.toString(), keyPathSecret);
+					}catch(Exception e){
+						System.out.println("Failed to encrypt data with AES");
+					}
+	
+					DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
+					Base64.getDecoder().decode(clientDataToSend).length,  messageFromServer.getAddress(), messageFromServer.getPort());
+	
+					//send ack datagram
+					socket.send(ackPacket);
 
-				//send ack datagram
-				socket.send(ackPacket);
-				System.out.println("Enviar ack de " + type + " para este: "+ Integer.parseInt(idMainProcess));
-			}catch(Exception e){
-				System.out.println("Failed to receive message");
-			}
-
-			// If consensus instance is expected
-			if(Integer.parseInt(instance) == consensusCounter){
-				// If we receive message type expected
-				if (messageType.equals(type.toString())){
-					// Add to list of received
-					if (values.get(value) != null){
-						if(!values.get(value).contains(8000 + Integer.parseInt(idMainProcess))){
-							values.get(value).add(8000 + Integer.parseInt(idMainProcess));
+					// If consensus instance is expected
+					if(Integer.parseInt(instance) == consensusCounter){
+						// If we receive message type expected
+						if (messageType.equals(type.toString())){
+							// Add to list of received
+							if (values.get(value) != null){
+								if(!values.get(value).contains(8000 + Integer.parseInt(idMainProcess))){
+									values.get(value).add(8000 + Integer.parseInt(idMainProcess));
+								}
+							}
+							else{
+								values.put(value, new ArrayList<Integer>());
+								values.get(value).add(8000 + Integer.parseInt(idMainProcess));
+							}
+							// If we reached consensus
+							if(values.get(value).size() >= consensusNumber){
+								System.out.printf("Acordamos este valor " + value + " para " + type + "\n");
+								return value;
+							}
 						}
 					}
-					else{
-						values.put(value, new ArrayList<Integer>());
-						values.get(value).add(8000 + Integer.parseInt(idMainProcess));
-					}
-					// If we reached consensus
-					if(values.get(value).size() >= consensusNumber){
-						System.out.printf("Acordamos este valor " + value + " para " + type + "\n");
-						return value;
-					}
 				}
+
+			}catch(Exception e){
+				System.out.println("Failed to receive or send message");
 			}
 		}
 	}
@@ -379,7 +417,6 @@ public class SecureServer {
 		while(true){
 			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
 			try{
-				System.out.println("Estou à espera");
 				//Receive Preprepare
 				socket.receive(messageFromServer);
 
@@ -415,34 +452,40 @@ public class SecureServer {
 
 				// Parse JSON and extract arguments
 				JsonObject requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
-				String messageType = null, instance = null, value = null, idMainProcess = null;
-				{
-					messageType = requestJson.get("messageType").getAsString();
-					instance = requestJson.get("instance").getAsString();
-					value = requestJson.get("value").getAsString();
-					idMainProcess = requestJson.get("idMainProcess").getAsString();
+
+				boolean integrityCheck = checkIntegrity(hmac, requestJson);
+
+				if(!integrityCheck){
+					System.out.println("Integrity violated");
 				}
-
-				//verify integrity by cheching HMAC
-
-				//send ack datagram
-				if(leaderPort == 8000 + Integer.parseInt(idMainProcess)){
-					socket.send(ackPacket);
-					System.out.println("Recebi preprepare do lider");
-				}
-
-				// If we receive message type expected
-				if (messageType.equals(message_type.PREPREPARE.toString()) && Integer.parseInt(instance) == consensusCounter + 1
-					&& leaderPort == 8000 + Integer.parseInt(idMainProcess)){
-					consensusCounter++;
-					return value;
+				else{
+					System.out.println("Integrity checked");
+					String messageType = null, instance = null, value = null, idMainProcess = null;
+					{
+						messageType = requestJson.get("messageType").getAsString();
+						instance = requestJson.get("instance").getAsString();
+						value = requestJson.get("value").getAsString();
+						idMainProcess = requestJson.get("idMainProcess").getAsString();
+					}
+	
+					//send ack datagram
+					if(leaderPort == 8000 + Integer.parseInt(idMainProcess)){
+						socket.send(ackPacket);
+						System.out.println("Recebi preprepare do lider");
+					}
+	
+					// If we receive message type expected
+					if (messageType.equals(message_type.PREPREPARE.toString()) && Integer.parseInt(instance) == consensusCounter + 1
+						&& leaderPort == 8000 + Integer.parseInt(idMainProcess)){
+						consensusCounter++;
+						return value;
+					}
 				}
 
 			}catch(Exception e){
 				System.out.println("Failed to receive message");
 			}
 		}
-
 	}
 
 	public static String normalConsensus(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
@@ -475,7 +518,7 @@ public class SecureServer {
 		//wait for commit quorum
 		String valueDecided = waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket);
 
-		if(valueAgreed != valueDecided){
+		if(!valueAgreed.equals(valueDecided)){
 			return "No Decision";
 		}
 
@@ -582,8 +625,6 @@ public class SecureServer {
 			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 		String tokenToByte = null;
 
-		System.out.println("Vou encriptar token");
-
 		try{
 			tokenToByte = do_RSAEncryption(tokenRcvd, keyPathPriv);
 		}
@@ -600,18 +641,31 @@ public class SecureServer {
 			responseJson.addProperty("body", valueToSend);
 		}
 
-		System.out.println("Vou encriptar pedido");
-
-		// Send response
-		String serverData = null;
+		//Create hmac to assure integrity
+		byte[] hmac = null;
 		try{
-			serverData = do_Encryption(responseJson.toString(), keyPathSecret);
+			hmac = digest(responseJson.toString().getBytes(UTF_8), "SHA3-256");
+		}catch (IllegalArgumentException e){
+			System.out.println("Failed to hash value");
+		}
+
+		//ENVIAR HMAC EM BASE 64
+		JsonObject messageWithHMAC = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			messageWithHMAC.addProperty("payload", responseJson.toString());
+			messageWithHMAC.addProperty("hmac", Base64.getEncoder().encodeToString(hmac));
+		}
+
+		String clientData = null;
+		//Encrypt datagram with AES and simetric key
+		try{
+			clientData = do_Encryption(messageWithHMAC.toString(), keyPathSecret);
 		}
 		catch (Exception e){
-			System.out.printf("Encryption failed\n");
+			System.out.printf("Encryption with AES failed\n");
 		}
 		
-		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(serverData), Base64.getDecoder().decode(serverData).length, clientPacket.getAddress(), clientPacket.getPort());
+		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, clientPacket.getAddress(), clientPacket.getPort());
 		
 		try{
 			socket.send(serverPacket);
@@ -666,7 +720,6 @@ public class SecureServer {
 			//Algoritmo 1
 			if(port == leaderPort){
 				System.out.println("Sou lider");
-
 	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
 	
 				// Receive packet and process data
@@ -678,29 +731,43 @@ public class SecureServer {
 					}
 				}
 
-				InetAddress clientAddress = clientPacket.getAddress();
-				int clientPort = clientPacket.getPort();
-				int clientLength = clientPacket.getLength();
 				byte[] clientData = clientPacket.getData();
 
-				String token = null;
-				String tokenRcvd = null;
 				String clientText = null;
 
-				System.out.printf("Received request packet from %s:%d!%n", clientAddress, clientPort);
-
-				System.out.println("Vou desencriptar pedido");
-
-				// Decryopt request
 				try{
-					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, clientLength);
+					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, clientPacket.getLength());
 				}
 				catch(Exception e){
-					System.out.println(e);
+					System.out.println("Decryption with AES failed");
+				}
+
+				//Parse Json with payload and hmac
+				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+				String hmac = null, receivedFromJson = null;
+				{
+					hmac = received.get("hmac").getAsString();
+					receivedFromJson = received.get("payload").getAsString();
 				}
 
 				// Parse JSON and extract arguments
-				JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
+				JsonObject requestJson = null;
+				try{
+					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+				} catch (Exception e){
+					System.out.println("Failed to parse Json received");
+				}
+
+				boolean integrityCheck = checkIntegrity(hmac, requestJson);
+
+				if(!integrityCheck){
+					System.out.println("Integrity violated");
+				}
+
+				// Parse JSON and extract arguments
+				requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+				String token = null;
+				String tokenRcvd = null;
 				String body = null;
 				{
 					JsonObject infoJson = requestJson.getAsJsonObject("info");
@@ -709,9 +776,6 @@ public class SecureServer {
 				}
 
 				inputValue = body;
-				System.out.printf("Recebi esta mensagem: %s\n", body);
-
-				System.out.println("Vou desencriptar token");
 				
 				//Decrypt autentication token
 				try{
@@ -745,7 +809,7 @@ public class SecureServer {
 				System.out.println("Sou normal");
 				valueDecided = normalConsensus(socket, consensusNumber, leaderPort, serverPorts, port);
 
-				System.out.printf("Sou normal e concordamos com isto: " + valueDecided);
+				System.out.printf("Sou normal e concordamos com isto: " + valueDecided + "\n");
 
 				consensusRounds.put(consensusCounter, valueDecided);
 

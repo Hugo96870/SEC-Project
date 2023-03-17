@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" name="test.java.MyTests" time="25.944" tests="3" errors="0" skipped="0" failures="3">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" name="test.java.MyTests" time="21.536" tests="3" errors="0" skipped="0" failures="3">
   <properties>
     <property name="java.specification.version" value="17"/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
@@ -11,7 +11,7 @@
     <property name="java.vm.specification.version" value="17"/>
     <property name="sun.java.launcher" value="SUN_STANDARD"/>
     <property name="sun.boot.library.path" value="/home/hugo/.sdkman/candidates/java/17.0.6-tem/lib"/>
-    <property name="sun.java.command" value="/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/surefire/surefirebooter17094810605927674230.jar /mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/surefire 2023-03-16T16-59-57_220-jvmRun1 surefire993993757621073343tmp surefire_013727857414961009576tmp"/>
+    <property name="sun.java.command" value="/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/surefire/surefirebooter8063291240315191226.jar /mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/surefire 2023-03-17T14-12-16_369-jvmRun1 surefire1129963150846992363tmp surefire_05036303383723834736tmp"/>
     <property name="jdk.debug" value="release"/>
     <property name="surefire.test.class.path" value="/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/test-classes:/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/classes:/home/hugo/.m2/repository/javax/annotation/javax.annotation-api/1.3.2/javax.annotation-api-1.3.2.jar:/home/hugo/.m2/repository/javax/xml/bind/jaxb-api/2.3.0/jaxb-api-2.3.0.jar:/home/hugo/.m2/repository/com/sun/xml/bind/jaxb-core/2.3.0/jaxb-core-2.3.0.jar:/home/hugo/.m2/repository/com/sun/xml/bind/jaxb-impl/2.3.0/jaxb-impl-2.3.0.jar:/home/hugo/.m2/repository/com/google/code/gson/gson/2.8.6/gson-2.8.6.jar:/home/hugo/.m2/repository/org/junit/jupiter/junit-jupiter-api/5.8.1/junit-jupiter-api-5.8.1.jar:/home/hugo/.m2/repository/org/opentest4j/opentest4j/1.2.0/opentest4j-1.2.0.jar:/home/hugo/.m2/repository/org/junit/platform/junit-platform-commons/1.8.1/junit-platform-commons-1.8.1.jar:/home/hugo/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/hugo/.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.8.1/junit-jupiter-engine-5.8.1.jar:/home/hugo/.m2/repository/org/junit/platform/junit-platform-engine/1.8.1/junit-platform-engine-1.8.1.jar:"/>
     <property name="sun.cpu.endian" value="little"/>
@@ -26,7 +26,7 @@
     <property name="line.separator" value="&#10;"/>
     <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
     <property name="java.specification.name" value="Java Platform API Specification"/>
-    <property name="surefire.real.class.path" value="/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/surefire/surefirebooter17094810605927674230.jar"/>
+    <property name="surefire.real.class.path" value="/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/target/surefire/surefirebooter8063291240315191226.jar"/>
     <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
     <property name="java.runtime.version" value="17.0.6+10"/>
     <property name="user.name" value="hugo"/>
@@ -51,17 +51,17 @@
     <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
     <property name="java.class.version" value="61.0"/>
   </properties>
-  <testcase name="test1" classname="test.java.MyTests" time="10.16">
+  <testcase name="test1" classname="test.java.MyTests" time="8.387">
     <failure message="expected: &lt;0&gt; but was: &lt;1&gt;" type="org.opentest4j.AssertionFailedError"><![CDATA[org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
 	at test.java.MyTests.test1(MyTests.java:60)
 ]]></failure>
   </testcase>
-  <testcase name="test2" classname="test.java.MyTests" time="10.013">
+  <testcase name="test2" classname="test.java.MyTests" time="8.557">
     <failure message="expected: &lt;0&gt; but was: &lt;1&gt;" type="org.opentest4j.AssertionFailedError"><![CDATA[org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
 	at test.java.MyTests.test2(MyTests.java:110)
 ]]></failure>
   </testcase>
-  <testcase name="test3" classname="test.java.MyTests" time="5.729">
+  <testcase name="test3" classname="test.java.MyTests" time="4.531">
     <failure message="expected: &lt;0&gt; but was: &lt;1&gt;" type="org.opentest4j.AssertionFailedError"><![CDATA[org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
 	at test.java.MyTests.test3(MyTests.java:168)
 ]]></failure>

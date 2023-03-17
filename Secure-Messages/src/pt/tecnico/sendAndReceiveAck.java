@@ -18,7 +18,7 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
 	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
 
-	/** Buffer size for receiving a UDP packet. */
+	/* Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
     private static final String keyPathSecret = "keys/secret.key";
@@ -69,13 +69,11 @@ public class sendAndReceiveAck implements Callable<Integer> {
             socket.setSoTimeout(timeout);
             boolean ackReceived = false;
             while(!ackReceived){
-                System.out.println("Enviei para este. " + portToSend);
                 socket.send(packetToSend);
                 try {
 
                     //Receive ack from message sent
                     DatagramPacket ackDatagram = new DatagramPacket(buf, buf.length);
-                    System.out.println("Vou esperar ack deste: " + portToSend);
                     socket.receive(ackDatagram);
 
                     String clientText = do_Decryption(Base64.getEncoder().encodeToString(ackDatagram.getData()), keyPathSecret, ackDatagram.getLength());
@@ -87,8 +85,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
                         ack = requestJson.get("value").getAsString();
                     }
 
-
-                    System.out.println(ack);
                     // If ack is from the expected server
                     if(ackDatagram.getPort() == portToSend && ack.equals("ack")){
                         System.out.println("Recebi ack deste: " + portToSend);
@@ -99,13 +95,14 @@ public class sendAndReceiveAck implements Callable<Integer> {
                     }
                 } catch (SocketTimeoutException e) {
                     //expected ack was not received
+                    System.out.println("Did not receive ack during timeout duration, will retransmit message");
                     timeout += 1000;
                     
                 }
             }
             socket.close();
         }catch (Exception e){
-            System.out.printf("Cant send PrePrepare message\n");
+            System.out.printf("Couldn't send message to " + packetToSend.getAddress() + ":" + packetToSend.getPort() + "\n");
         }
 
         return 1;
