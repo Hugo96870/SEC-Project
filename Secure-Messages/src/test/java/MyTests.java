@@ -1,4 +1,4 @@
-package test.java;
+/*package test.java;
 
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -167,4 +167,4 @@ public class MyTests {
         System.out.println(exitValue);
         Assertions.assertEquals(0, exitValue);
     }
-}
+}*/

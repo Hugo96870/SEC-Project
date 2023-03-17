@@ -9,6 +9,8 @@ import java.security.PrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
+import javax.xml.crypto.Data;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.security.PublicKey;
@@ -26,6 +28,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Callable;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class SecureServer {
 
@@ -713,22 +718,33 @@ public class SecureServer {
 
 		Map<Integer, String> consensusRounds = new HashMap<Integer,String>();
 
+		List<DatagramPacket> requests = new ArrayList<>();
+
+		BlockingQueue<DatagramPacket> queue = new LinkedBlockingQueue<>();
+
+		Callable<Void> callable = new receiveString(requests, 9999, queue);
+
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+
+		executor.submit(callable);
+
 		// Wait for client packets 
-		byte[] buf = new byte[BUFFER_SIZE];
 		while (true) {
 
 			//Algoritmo 1
 			if(port == leaderPort){
 				System.out.println("Sou lider");
 	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
-	
-				// Receive packet and process data
-				DatagramPacket clientPacket = new DatagramPacket(buf, buf.length);
-				while(true){
-					socket.receive(clientPacket);
-					if(clientPacket.getPort() == 10000){
-						break;
+
+				DatagramPacket clientPacket = null;
+				Integer flag = 0;
+				try{
+					while(flag.equals(0)){
+						clientPacket = queue.take();
+						flag = 1;
 					}
+				} catch (Exception e){
+					System.out.println("Queue error");
 				}
 
 				byte[] clientData = clientPacket.getData();
