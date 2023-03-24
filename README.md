@@ -33,6 +33,7 @@ Para o design do projeto optámos por implementar uma rede distribuída com as s
         - SecureClient: Código do cliente.
         - SecureServer: Código do server.
         - sendAndReceiveAck: Código de funções auxiliares a serem chamadas por threads criadas pelo servidor.
+        - receiveString: Código com funções auxiliares que são chamadas por uma thread responsável por estar a receber os pedidos dos clientes.
     - src/test/java: Pasta com o código dos testes criados em Junit.
     - pom.xml: ficheiro de confiiguração do maven
  ----
