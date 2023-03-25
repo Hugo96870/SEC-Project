@@ -44,5 +44,4 @@ public class receiveString implements Callable<Void> {
             queue.add(clientPacket);
         }
     }
-
 }

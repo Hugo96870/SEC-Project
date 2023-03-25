@@ -3,13 +3,9 @@ package pt.tecnico;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.*;
-import javax.crypto.Cipher;
-import javax.crypto.spec.SecretKeySpec;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.nio.file.Files;
 import java.util.Base64;
-import java.nio.file.Paths;
 import java.util.concurrent.Callable;
 
 public class sendAndReceiveAck implements Callable<Integer> {
@@ -20,8 +16,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
 	/* Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
-
-    private static final String keyPathSecret = "keys/secret.key";
 
 	private static byte[] buf = new byte[BUFFER_SIZE];
 
@@ -34,28 +28,19 @@ public class sendAndReceiveAck implements Callable<Integer> {
         portToSend = port;
     }
 
-    public static String do_Decryption(String cipherText, String path, int lenght) throws Exception
-    {
-        // Load the secret key from the .key file
-        byte[] secretKeyBytes = Files.readAllBytes(Paths.get(path));
-        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKeyBytes, "AES");
 
+	/*Decryption function with secret key */
+    public static String ConvertReceived(String cipherText, int lenght) throws Exception
+    {
 		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
 
 		byte[] finalCipherText = new byte[lenght];
 		System.arraycopy(ciphertextBytes, 0, finalCipherText, 0, lenght);
 
-        // Create an instance of the Cipher class using the AES algorithm and initialize it with the secret key
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
+		// Convert the decrypted byte array to a string
+		String clientText = new String(finalCipherText, "UTF-8");
 
-        // Use the Cipher object to decrypt the byte array
-        byte[] plaintextBytes = cipher.doFinal(finalCipherText);
-
-        // Convert the decrypted byte array to a string
-        String plaintext = new String(plaintextBytes, "UTF-8");
-
-		return plaintext;
+		return clientText;
     }
 
     
@@ -76,7 +61,7 @@ public class sendAndReceiveAck implements Callable<Integer> {
                     DatagramPacket ackDatagram = new DatagramPacket(buf, buf.length);
                     socket.receive(ackDatagram);
 
-                    String clientText = do_Decryption(Base64.getEncoder().encodeToString(ackDatagram.getData()), keyPathSecret, ackDatagram.getLength());
+                    String clientText = ConvertReceived(Base64.getEncoder().encodeToString(ackDatagram.getData()), ackDatagram.getLength());
 
                     // Parse JSON and extract arguments
                     JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();

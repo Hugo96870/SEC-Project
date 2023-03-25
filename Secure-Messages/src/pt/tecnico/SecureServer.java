@@ -8,9 +8,6 @@ import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import javax.crypto.Cipher;
-import javax.crypto.spec.SecretKeySpec;
-import javax.xml.crypto.Data;
-
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.security.PublicKey;
@@ -73,51 +70,29 @@ public class SecureServer {
 	private static final String keyPathPriv = "keys/serverPriv.der";
 	private static final String keyPathSecret = "keys/secret.key";
 
-    public static String do_Encryption(String plainText, String path) throws Exception
+    public static String ConvertToSend(String plainText) throws Exception
     {
-        // Load the secret key from the .key file
-        byte[] secretKeyBytes = Files.readAllBytes(Paths.get(path));
-        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKeyBytes, "AES");
-
-        // Convert the string to be encrypted to a byte array
-        byte[] plaintextBytes = plainText.getBytes("UTF-8");
-
-        // Create an instance of the Cipher class using the AES algorithm and initialize it with the secret key
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
-
-        // Use the Cipher object to encrypt the byte array
-        byte[] ciphertextBytes = cipher.doFinal(plaintextBytes);
+		// Convert the string to be encrypted to a byte array
+		byte[] plaintextBytes = plainText.getBytes("UTF-8");
 
 		// Encode the encrypted byte array to Base64 encoding
-		String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
+		String clientDataToSend = Base64.getEncoder().encodeToString(plaintextBytes);
 
-		return ciphertext;
+		return clientDataToSend;
     }
 
 	/*Decryption function with secret key */
-    public static String do_Decryption(String cipherText, String path, int lenght) throws Exception
+    public static String ConvertReceived(String cipherText, int lenght) throws Exception
     {
-        // Load the secret key from the .key file
-        byte[] secretKeyBytes = Files.readAllBytes(Paths.get(path));
-        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKeyBytes, "AES");
-
 		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
 
 		byte[] finalCipherText = new byte[lenght];
 		System.arraycopy(ciphertextBytes, 0, finalCipherText, 0, lenght);
 
-        // Create an instance of the Cipher class using the AES algorithm and initialize it with the secret key
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
+		// Convert the decrypted byte array to a string
+		String clientText = new String(finalCipherText, "UTF-8");
 
-        // Use the Cipher object to decrypt the byte array
-        byte[] plaintextBytes = cipher.doFinal(finalCipherText);
-
-        // Convert the decrypted byte array to a string
-        String plaintext = new String(plaintextBytes, "UTF-8");
-
-		return plaintext;
+		return clientText;
     }
 
 	/*Encryption function using RSA algorithm */
@@ -242,7 +217,7 @@ public class SecureServer {
 				String clientData = null;
 				//Encrypt datagram with AES and simetric key
 				try{
-					clientData = do_Encryption(messageWithHMAC.toString(), keyPathSecret);
+					clientData = ConvertToSend(messageWithHMAC.toString());
 				}
 				catch (Exception e){
 					System.out.printf("Encryption with AES failed\n");
@@ -290,13 +265,12 @@ public class SecureServer {
 				socket.receive(messageFromServer);
 
 				String clientText = null;
-				byte[] clientData = messageFromServer.getData();
-	
+				
 				try{
-					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, messageFromServer.getLength());
+					clientText = ConvertReceived(Base64.getEncoder().encodeToString(messageFromServer.getData()), messageFromServer.getLength());
 				}
 				catch(Exception e){
-					System.out.println("Decryption with AES failed");
+					System.out.println("Message conversion failed");
 				}
 
 				//Parse Json with payload and hmac
@@ -339,13 +313,14 @@ public class SecureServer {
 						message.addProperty("value", "ack");
 					}
 
-					String clientDataToSend = null;
-					try{
-						clientDataToSend = do_Encryption(message.toString(), keyPathSecret);
-					}catch(Exception e){
-						System.out.println("Failed to encrypt data with AES");
-					}
-	
+// ---------------------------------------------------------------------------------------------------------------------------
+					// Convert the string to be encrypted to a byte array
+					byte[] plaintextBytes = message.toString().getBytes("UTF-8");
+
+					// Encode the encrypted byte array to Base64 encoding
+					String clientDataToSend = Base64.getEncoder().encodeToString(plaintextBytes);
+// ---------------------------------------------------------------------------------------------------------------------------
+		
 					DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
 					Base64.getDecoder().decode(clientDataToSend).length,  messageFromServer.getAddress(), messageFromServer.getPort());
 	
@@ -431,21 +406,12 @@ public class SecureServer {
 					message.addProperty("value", "ack");
 				}
 
-				String clientData = do_Encryption(message.toString(), keyPathSecret);
+				String clientData = ConvertToSend(message.toString());
 
 				DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
 				Base64.getDecoder().decode(clientData).length,  messageFromServer.getAddress(), messageFromServer.getPort());
 
-				String clientText = null;
-				byte[] clientDataReceived = messageFromServer.getData();
-	
-				//Decrypt message received with aes and simetric key
-				try{
-					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientDataReceived), keyPathSecret, messageFromServer.getLength());
-				}
-				catch(Exception e){
-					System.out.println(e);
-				}
+				String clientText = ConvertReceived(Base64.getEncoder().encodeToString(messageFromServer.getData()), messageFromServer.getLength());
 
 				//Parse json with payload and Hmac
 				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
@@ -664,7 +630,7 @@ public class SecureServer {
 		String clientData = null;
 		//Encrypt datagram with AES and simetric key
 		try{
-			clientData = do_Encryption(messageWithHMAC.toString(), keyPathSecret);
+			clientData = ConvertToSend(messageWithHMAC.toString());
 		}
 		catch (Exception e){
 			System.out.printf("Encryption with AES failed\n");
@@ -747,17 +713,12 @@ public class SecureServer {
 					System.out.println("Queue error");
 				}
 
-				byte[] clientData = clientPacket.getData();
-
 				String clientText = null;
-
 				try{
-					clientText = do_Decryption(Base64.getEncoder().encodeToString(clientData), keyPathSecret, clientPacket.getLength());
+					clientText = ConvertReceived(Base64.getEncoder().encodeToString(clientPacket.getData()), clientPacket.getLength());
+				} catch (Exception e){
+					System.out.println("Error in type conversion");
 				}
-				catch(Exception e){
-					System.out.println("Decryption with AES failed");
-				}
-
 				//Parse Json with payload and hmac
 				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
 				String hmac = null, receivedFromJson = null;
