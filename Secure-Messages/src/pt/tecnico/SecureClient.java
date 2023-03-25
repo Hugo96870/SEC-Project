@@ -19,8 +19,24 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Callable;
+import java.util.concurrent.*;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
 
 public class SecureClient {
+
+	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
+
+	/** Buffer size for receiving a UDP packet. */
+	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
+
+	final static String keyPathPublic = "keys/serverPub.der";
+	final static String keyPathPriv = "keys/userPriv.der";
 
 	private static final Charset UTF_8 = StandardCharsets.UTF_8;
 
@@ -126,8 +142,110 @@ public class SecureClient {
 		return plaintext;
     }
 
-	/** Buffer size for receiving a UDP packet. */
-	private static final int BUFFER_SIZE = 65_507;
+	public static void sendAck(DatagramSocket socket, DatagramPacket packet){
+		// Create request message
+		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			message.addProperty("value", "ack");
+		}
+		try{
+		String clientDataToSend = ConvertToSend(message.toString());
+
+		DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
+		Base64.getDecoder().decode(clientDataToSend).length, packet.getAddress(), packet.getPort());
+
+		//send ack datagram
+		socket.send(ackPacket);
+
+		} catch (Exception e){
+			System.out.println("Failed to send ack");
+		}
+	}
+
+	public static String waitForQuorum(Integer consensusNumber, DatagramSocket socket){
+
+		Map<String, List<Integer>> receivedResponses = new HashMap<String, List<Integer>>();
+
+		//Cycle waitin for quorum
+		while(true){
+			byte[] serverData = new byte[BUFFER_SIZE];
+			DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length);
+			System.out.printf("Tou à espera de quorum de servers\n");
+			try{
+				// Receive response
+				socket.receive(serverPacket);
+
+				System.out.println("Received response");
+
+				sendAck(socket, serverPacket);
+
+				String serverText = null;
+				try{
+					serverText = ConvertReceived(Base64.getEncoder().encodeToString(serverPacket.getData()), serverPacket.getLength());
+				}
+				catch(Exception e){
+					System.out.println("Decryption with AES failed");
+				}
+
+				//Parse Json with payload and hmac
+				JsonObject received = JsonParser.parseString(serverText).getAsJsonObject();
+				String hmacRcvd = null, receivedFromJson = null;
+				{
+					hmacRcvd = received.get("hmac").getAsString();
+					receivedFromJson = received.get("payload").getAsString();
+				}
+
+				// Parse JSON and extract arguments
+				JsonObject responseJson = null;
+				try{
+					responseJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+				} catch (Exception e){
+					System.out.println("Failed to parse Json received");
+				}
+
+				boolean integrityCheck = checkIntegrity(hmacRcvd, responseJson);
+
+				if(!integrityCheck){
+					System.out.println("Integrity violated");
+				}
+				else{
+					// Parse JSON and extract arguments
+					String body = null, tokenRcvd = null;
+					{
+						JsonObject infoJson = responseJson.getAsJsonObject("info");
+						tokenRcvd = infoJson.get("token").getAsString();
+						body = responseJson.get("body").getAsString();
+					}
+					try{
+						tokenRcvd = do_RSADecryption(tokenRcvd, keyPathPublic);
+					}
+					catch (Exception e){
+						System.out.printf("Identity invalid");
+					}
+
+					System.out.printf("Identity validated\n");
+				
+					// Add to list of received
+					if (receivedResponses.get(body) != null){
+						if(!receivedResponses.get(body).contains(serverPacket.getPort())){
+							receivedResponses.get(body).add(serverPacket.getPort());
+						}
+					}
+					else{
+						receivedResponses.put(body, new ArrayList<Integer>());
+						receivedResponses.get(body).add(serverPacket.getPort());
+					}
+					// If we reached consensus
+					if(receivedResponses.get(body).size() >= consensusNumber){
+						return body;
+					}
+				}
+
+			}catch(Exception e){
+				System.out.println("Failed to receive or send message");
+			}
+		}
+	}
 
 	public static void main(String[] args) throws IOException {
 		// Check arguments
@@ -137,15 +255,13 @@ public class SecureClient {
 			System.exit(1);
 		}
 
-        final String keyPathPublic = "keys/serverPub.der";
-		final String keyPathPriv = "keys/userPriv.der";
-
 		String tokenToString = null;
 
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
 		final int serverPort = Integer.parseInt(args[1]);
 		final String sentence = args[2];
+		final Integer nrServers = Integer.parseInt(args[3]);
 
         Integer token = 0;
 		
@@ -156,13 +272,6 @@ public class SecureClient {
 			System.out.printf("RSA encryption failed\n");
 			System.out.println(e.getMessage());
 		}
-
-		/*
-		Scanner sc = new Scanner(System.in);
-		String sentence = sc.nextLine();
-		sc.close();
-		*/
-
 		
 		// Create socket
 		DatagramSocket socket = new DatagramSocket(10000);
@@ -201,63 +310,28 @@ public class SecureClient {
 			System.out.printf("Encryption with AES failed\n");
 		}
 
+		//SendMessagetoAll
+
 		DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, serverAddress, serverPort);
-		socket.send(clientPacket);
-		System.out.printf("Request packet sent\n");
 
-		// Receive response
-		byte[] serverData = new byte[BUFFER_SIZE];
-		DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length);
-		socket.receive(serverPacket);
+		Callable<Integer> callable = new sendAndReceiveAck(clientPacket, serverPort);
 
-		System.out.println("Received response");
+		ExecutorService executor = Executors.newSingleThreadExecutor();
 
-		String serverText = null;
+		Future<Integer> future = executor.submit(callable);
+
+		Integer result = null;
 		try{
-			serverText = ConvertReceived(Base64.getEncoder().encodeToString(serverPacket.getData()), serverPacket.getLength());
-		}
-		catch(Exception e){
-			System.out.println("Decryption with AES failed");
-		}
-
-		//Parse Json with payload and hmac
-		JsonObject received = JsonParser.parseString(serverText).getAsJsonObject();
-		String hmacRcvd = null, receivedFromJson = null;
-		{
-			hmacRcvd = received.get("hmac").getAsString();
-			receivedFromJson = received.get("payload").getAsString();
-		}
-
-		// Parse JSON and extract arguments
-		JsonObject responseJson = null;
-		try{
-			responseJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+			result = future.get();
 		} catch (Exception e){
-			System.out.println("Failed to parse Json received");
+			System.out.println("Failed to wait for thread");
 		}
 
-		boolean integrityCheck = checkIntegrity(hmacRcvd, responseJson);
+		System.out.println("Thread já acabou com valor: " + result);
 
-		if(!integrityCheck){
-			System.out.println("Integrity violated");
-		}
+		Integer consensusNumber = (nrServers + (nrServers-1)/3)/2 + 1;
 
-		// Parse JSON and extract arguments
-		String body = null, tokenRcvd = null;
-		{
-			JsonObject infoJson = responseJson.getAsJsonObject("info");
-            tokenRcvd = infoJson.get("token").getAsString();
-			body = responseJson.get("body").getAsString();
-		}
-
-		try{
-			tokenRcvd = do_RSADecryption(tokenRcvd, keyPathPublic);
-		}
-		catch (Exception e){
-			System.out.printf("Identity invalid");
-		}
-
-		System.out.printf("Identity validated\n");
+		String body = waitForQuorum(consensusNumber, socket);
 
 		// Close socket
 		socket.close();

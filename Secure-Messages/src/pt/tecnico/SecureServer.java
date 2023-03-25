@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Callable;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 
 public class SecureServer {
 
@@ -81,7 +82,27 @@ public class SecureServer {
 		return clientDataToSend;
     }
 
-	/*Decryption function with secret key */
+	public static void sendAck(DatagramSocket socket, DatagramPacket packet){
+		// Create request message
+		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			message.addProperty("value", "ack");
+		}
+		try{
+		String clientDataToSend = ConvertToSend(message.toString());
+
+		DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
+		Base64.getDecoder().decode(clientDataToSend).length, packet.getAddress(), packet.getPort());
+
+		//send ack datagram
+		socket.send(ackPacket);
+
+		} catch (Exception e){
+			System.out.println("Failed to send ack");
+		}
+	}
+
+	/* Decryption function with secret key */
     public static String ConvertReceived(String cipherText, int lenght) throws Exception
     {
 		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
@@ -306,26 +327,7 @@ public class SecureServer {
 						System.out.println("Failed to extract arguments from Json payload");
 					}
 
-	
-					// Create request message
-					JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
-					{
-						message.addProperty("value", "ack");
-					}
-
-// ---------------------------------------------------------------------------------------------------------------------------
-					// Convert the string to be encrypted to a byte array
-					byte[] plaintextBytes = message.toString().getBytes("UTF-8");
-
-					// Encode the encrypted byte array to Base64 encoding
-					String clientDataToSend = Base64.getEncoder().encodeToString(plaintextBytes);
-// ---------------------------------------------------------------------------------------------------------------------------
-		
-					DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
-					Base64.getDecoder().decode(clientDataToSend).length,  messageFromServer.getAddress(), messageFromServer.getPort());
-	
-					//send ack datagram
-					socket.send(ackPacket);
+					sendAck(socket, messageFromServer);
 
 					// If consensus instance is expected
 					if(Integer.parseInt(instance) == consensusCounter){
@@ -591,8 +593,8 @@ public class SecureServer {
 	}
 
 	//Sends encrypted message to client confirming the string appended
-	public static void respondToClient(String tokenRcvd, String keyPathPriv, String keyPathSecret, DatagramSocket socket,
-										DatagramPacket clientPacket, String valueToSend){
+	public static void respondToClient(String tokenRcvd, String keyPathPriv,
+									DatagramSocket socket, String valueToSend){
 			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 		String tokenToByte = null;
 
@@ -635,16 +637,31 @@ public class SecureServer {
 		catch (Exception e){
 			System.out.printf("Encryption with AES failed\n");
 		}
-		
-		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, clientPacket.getAddress(), clientPacket.getPort());
-		
+		InetAddress hostToSend = null;
 		try{
-			socket.send(serverPacket);
-		}catch(Exception e){
-			System.out.println("Error when responding to client");
+			hostToSend = InetAddress.getByName("localhost");
+		}catch (Exception e){
+			System.out.printf("Cant resolve host\n");
+		}
+		
+		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, hostToSend, 10000);
+		
+		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, 10000);
+
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+
+		Future<Integer> future = executor.submit(callable);
+
+		Integer result = null;
+		try{
+			result = future.get();
+		} catch (Exception e){
+			System.out.println("Failed to wait for thread");
 		}
 
-		System.out.printf("Response packet sent to %s:%d!%n", clientPacket.getAddress(), clientPacket.getPort());
+		System.out.println("Thread já acabou com valor: " + result);
+
+		System.out.printf("Response packet sent to %s:%d! and received ack \n", hostToSend, 10000);
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
 	}
@@ -694,6 +711,9 @@ public class SecureServer {
 
 		executor.submit(callable);
 
+		String tokenRcvd = null;
+		DatagramPacket clientPacket = null;
+
 		// Wait for client packets 
 		while (true) {
 
@@ -702,7 +722,6 @@ public class SecureServer {
 				System.out.println("Sou lider");
 	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
 
-				DatagramPacket clientPacket = null;
 				Integer flag = 0;
 				try{
 					while(flag.equals(0)){
@@ -744,7 +763,6 @@ public class SecureServer {
 				// Parse JSON and extract arguments
 				requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
 				String token = null;
-				String tokenRcvd = null;
 				String body = null;
 				{
 					JsonObject infoJson = requestJson.getAsJsonObject("info");
@@ -776,7 +794,7 @@ public class SecureServer {
 
 				String response = valueDecided + "\n";
 
-				respondToClient(tokenRcvd, keyPathPriv, keyPathSecret, socket, clientPacket, response);
+				respondToClient(tokenRcvd, keyPathPriv, socket, response);
 
 				consensusRounds.put(consensusCounter,valueDecided);
 
@@ -785,6 +803,18 @@ public class SecureServer {
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
 				System.out.println("Sou normal");
 				valueDecided = normalConsensus(socket, consensusNumber, leaderPort, serverPorts, port);
+
+				String response = valueDecided + "\n";
+
+				byte[] plaintextBytes = "0".getBytes("UTF-8");
+				
+				String cipherText = Base64.getEncoder().encodeToString(plaintextBytes);
+
+				byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
+
+				String plaintext = new String(ciphertextBytes, "UTF-8");
+
+				respondToClient(plaintext, keyPathPriv, socket, response);
 
 				System.out.printf("Sou normal e concordamos com isto: " + valueDecided + "\n");
 

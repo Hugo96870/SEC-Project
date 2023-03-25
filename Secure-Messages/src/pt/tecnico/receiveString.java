@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.util.Base64;
 
 
 public class receiveString implements Callable<Void> {
@@ -27,6 +30,17 @@ public class receiveString implements Callable<Void> {
         this.port = port;
         this.queue = queue;
     }
+
+    public static String ConvertToSend(String plainText) throws Exception
+    {
+		// Convert the string to be encrypted to a byte array
+		byte[] plaintextBytes = plainText.getBytes("UTF-8");
+
+		// Encode the encrypted byte array to Base64 encoding
+		String clientDataToSend = Base64.getEncoder().encodeToString(plaintextBytes);
+
+		return clientDataToSend;
+    }
     
     @Override
     public Void call() throws Exception {
@@ -41,7 +55,22 @@ public class receiveString implements Callable<Void> {
             socket.receive(clientPacket);
 
             requests.add(clientPacket);
+
             queue.add(clientPacket);
+
+            // Create request message
+            JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+            {
+                message.addProperty("value", "ack");
+            }
+
+            String clientDataToSend = ConvertToSend(message.toString());
+
+            DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
+            Base64.getDecoder().decode(clientDataToSend).length, clientPacket.getAddress(), clientPacket.getPort());
+
+            //send ack datagram
+            socket.send(ackPacket);
         }
     }
 }

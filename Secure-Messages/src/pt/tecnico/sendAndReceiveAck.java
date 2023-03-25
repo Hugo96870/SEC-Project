@@ -42,7 +42,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
 		return clientText;
     }
-
     
     @Override
     public Integer call() throws Exception {
@@ -89,8 +88,7 @@ public class sendAndReceiveAck implements Callable<Integer> {
         }catch (Exception e){
             System.out.printf("Couldn't send message to " + packetToSend.getAddress() + ":" + packetToSend.getPort() + "\n");
         }
-
-        return 1;
+        return 0;
     }
 
 }
