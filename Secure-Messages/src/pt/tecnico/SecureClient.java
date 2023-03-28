@@ -36,6 +36,9 @@ public class SecureClient {
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
 	final static String keyPathPublic = "keys/serverPub.der";
+	final static String keyPathPublic1 = "keys/serverPub1.der";
+	final static String keyPathPublic2 = "keys/serverPub2.der";
+	final static String keyPathPublic3 = "keys/serverPub3.der";
 	final static String keyPathPriv = "keys/userPriv.der";
 
 	private static final Charset UTF_8 = StandardCharsets.UTF_8;
@@ -187,6 +190,27 @@ public class SecureClient {
 					System.out.println("Decryption with AES failed");
 				}
 
+				String path = null;
+				System.out.println("Switch " + ((Integer)serverPacket.getPort()).toString());
+				switch(((Integer)serverPacket.getPort()).toString()){
+					case "12000":
+						System.out.println("Server 8000");
+						path = keyPathPublic;
+						break;
+					case "12001":
+						System.out.println("Server 8001");
+						path = keyPathPublic1;
+						break;
+					case "12002":
+						System.out.println("Server 8002");
+						path = keyPathPublic2;
+						break;
+					case "12003":
+						System.out.println("Server 8003");
+						path = keyPathPublic3;
+						break;
+				}
+
 				//Parse Json with payload and hmac
 				JsonObject received = JsonParser.parseString(serverText).getAsJsonObject();
 				String hmacRcvd = null, receivedFromJson = null;
@@ -217,10 +241,11 @@ public class SecureClient {
 						body = responseJson.get("body").getAsString();
 					}
 					try{
-						tokenRcvd = do_RSADecryption(tokenRcvd, keyPathPublic);
+						System.out.println("Path: " + path);
+						tokenRcvd = do_RSADecryption(tokenRcvd, path);
 					}
 					catch (Exception e){
-						System.out.printf("Identity invalid");
+						System.out.printf("Identity invalid\n");
 					}
 
 					System.out.printf("Identity validated\n");
@@ -259,9 +284,14 @@ public class SecureClient {
 
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
-		final int serverPort = Integer.parseInt(args[1]);
-		final String sentence = args[2];
-		final Integer nrServers = Integer.parseInt(args[3]);
+		final String sentence = args[1];
+		final Integer nrServers = Integer.parseInt(args[2]);
+
+		List<Integer> serverPorts = new ArrayList<Integer>(nrServers);
+
+		for(int i = 0; i < nrServers; i++){
+			serverPorts.add(8000 + i);
+		}
 
         Integer token = 0;
 		
@@ -310,24 +340,28 @@ public class SecureClient {
 			System.out.printf("Encryption with AES failed\n");
 		}
 
-		//SendMessagetoAll
+		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
+		List<sendAndReceiveAck> myThreads = new ArrayList<>();
+		List<Future<Integer>> future = new ArrayList<>();
 
-		DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, serverAddress, serverPort);
+		for(int i = 0; i < nrServers; i++){
+			//SendMessagetoAll
 
-		Callable<Integer> callable = new sendAndReceiveAck(clientPacket, serverPort);
+			DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
+					Base64.getDecoder().decode(clientData).length, serverAddress, serverPorts.get(i) + 3000);
 
-		ExecutorService executor = Executors.newSingleThreadExecutor();
-
-		Future<Integer> future = executor.submit(callable);
-
-		Integer result = null;
-		try{
-			result = future.get();
-		} catch (Exception e){
-			System.out.println("Failed to wait for thread");
+			myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, 0));
 		}
 
-		System.out.println("Thread já acabou com valor: " + result);
+		try{
+			for(int i = 0; i < serverPorts.size(); i++){
+				future.add(executorService.submit(myThreads.get(i)));
+				Integer result = future.get(i).get();
+				System.out.println("Thread já acabou com valor: " + result);
+			}
+		}catch(Exception e){
+			System.out.println("Error launching threads");
+		}
 
 		Integer consensusNumber = (nrServers + (nrServers-1)/3)/2 + 1;
 

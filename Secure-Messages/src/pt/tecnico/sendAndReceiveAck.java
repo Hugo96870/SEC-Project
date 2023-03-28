@@ -22,10 +22,12 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
     DatagramPacket packetToSend;
     Integer portToSend;
+    Integer myPort;
 
-    public sendAndReceiveAck(DatagramPacket packet, Integer port){
+    public sendAndReceiveAck(DatagramPacket packet, Integer port, Integer myPort){
         packetToSend = packet;
         portToSend = port;
+        this.myPort = myPort;
     }
 
 
@@ -49,10 +51,17 @@ public class sendAndReceiveAck implements Callable<Integer> {
         System.out.println("Thread started");
 
         try{
-            DatagramSocket socket = new DatagramSocket();
+            DatagramSocket socket = null;
+            if(myPort.equals(0)){
+                socket = new DatagramSocket();
+            }
+            else{
+                socket = new DatagramSocket(myPort);
+            }
             socket.setSoTimeout(timeout);
             boolean ackReceived = false;
             while(!ackReceived){
+                System.out.println("vou enviar");
                 socket.send(packetToSend);
                 try {
 

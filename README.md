@@ -68,10 +68,11 @@ mvn compile exec:java -Dmainclass=pt.tecnico.SecureServer -Dexec.args="N Y Z K"
 
 Para lançar um processo cliente deverá executar o seguinte comando num terminal na diretoria que contém o ficheiro pom.xml:
 ```
-mvn compile exec:java -Dmainclass=pt.tecnico.SecureClient -Dexec.args="localhost 9999 N"
+mvn compile exec:java -Dmainclass=pt.tecnico.SecureClient -Dexec.args="localhost N Y"
 ```
-Onde a variavél toma o seguinte valor:
+Onde as variavéis tomam o seguinte valor:
 - N: String para ser adicionada à blockchain
+- Y: Número de servidores no serviço da blockchain
 
 Para correr os testes Junit tem que correr o seguinte comando num terminal na diretoria que contém o ficheiro pom.xml:
 ```

@@ -29,6 +29,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.*;
+import java.util.Random;
 
 public class SecureServer {
 
@@ -69,7 +70,9 @@ public class SecureServer {
 	//Key paths
 	private static final String keyPathClientPublic = "keys/userPub.der";
 	private static final String keyPathPriv = "keys/serverPriv.der";
-	private static final String keyPathSecret = "keys/secret.key";
+	private static final String keyPathPriv1 = "keys/serverPriv1.der";
+	private static final String keyPathPriv2 = "keys/serverPriv2.der";
+	private static final String keyPathPriv3 = "keys/serverPriv3.der";
 
     public static String ConvertToSend(String plainText) throws Exception
     {
@@ -253,7 +256,7 @@ public class SecureServer {
 					System.out.println("Failed to create Datagram");
 				}
 
-				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i)));
+				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i), 0));
 
 			}
 		}
@@ -594,7 +597,7 @@ public class SecureServer {
 
 	//Sends encrypted message to client confirming the string appended
 	public static void respondToClient(String tokenRcvd, String keyPathPriv,
-									DatagramSocket socket, String valueToSend){
+									DatagramSocket socket, String valueToSend, Integer port){
 			/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 		String tokenToByte = null;
 
@@ -646,7 +649,7 @@ public class SecureServer {
 		
 		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(clientData), Base64.getDecoder().decode(clientData).length, hostToSend, 10000);
 		
-		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, 10000);
+		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, 10000, port + 4000);
 
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -703,9 +706,11 @@ public class SecureServer {
 
 		List<DatagramPacket> requests = new ArrayList<>();
 
+
+		//Thread taht receives inputs
 		BlockingQueue<DatagramPacket> queue = new LinkedBlockingQueue<>();
 
-		Callable<Void> callable = new receiveString(requests, 9999, queue);
+		Callable<Void> callable = new receiveString(requests, port + 3000, queue);
 
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -717,15 +722,12 @@ public class SecureServer {
 		// Wait for client packets 
 		while (true) {
 
-			//Algoritmo 1
-			if(port == leaderPort){
-				System.out.println("Sou lider");
-	/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
-
+				/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
 				Integer flag = 0;
 				try{
 					while(flag.equals(0)){
 						clientPacket = queue.take();
+						System.out.println("Recebi mensagem do cliente");
 						flag = 1;
 					}
 				} catch (Exception e){
@@ -779,7 +781,12 @@ public class SecureServer {
 				catch (Exception e){
 					System.out.printf("Identity invalid");
 				}
-/* --------------------------------------------------------------------------------------------------------------------------- */
+
+				System.out.printf("Identity cerified and received message: " + body + "\n");
+
+			//Algoritmo 1
+			if(port == leaderPort){
+				System.out.println("Sou lider");
 	/* ------------------------------------- Broadcast PREPREPARE message ------------------------------ */
 
 				broadcast(inputValue, port, serverPorts, socket, consensusNumber);
@@ -794,7 +801,9 @@ public class SecureServer {
 
 				String response = valueDecided + "\n";
 
-				respondToClient(tokenRcvd, keyPathPriv, socket, response);
+				System.out.println("path: " + keyPathPriv);
+
+				respondToClient(tokenRcvd, keyPathPriv, socket, response, port);
 
 				consensusRounds.put(consensusCounter,valueDecided);
 
@@ -802,19 +811,24 @@ public class SecureServer {
 			else if (serverType.equals("N")){
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
 				System.out.println("Sou normal");
+
 				valueDecided = normalConsensus(socket, consensusNumber, leaderPort, serverPorts, port);
 
 				String response = valueDecided + "\n";
 
-				byte[] plaintextBytes = "0".getBytes("UTF-8");
-				
-				String cipherText = Base64.getEncoder().encodeToString(plaintextBytes);
+				String path = null;
+				switch(port.toString()){
+					case "8001":
+						System.out.println("path: " + keyPathPriv1);
+						path = keyPathPriv1;
+						break;
+					case "8002":
+						System.out.println("path: " + keyPathPriv2);
+						path = keyPathPriv2;
+						break;
+				}
 
-				byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
-
-				String plaintext = new String(ciphertextBytes, "UTF-8");
-
-				respondToClient(plaintext, keyPathPriv, socket, response);
+				respondToClient(tokenRcvd, path, socket, response, port);
 
 				System.out.printf("Sou normal e concordamos com isto: " + valueDecided + "\n");
 
@@ -827,17 +841,35 @@ public class SecureServer {
 			else if (serverType.equals("B-PC")){
 				valueDecided = byzantineProcessPC(socket, consensusNumber, leaderPort, serverPorts, port);
 
+				String response = valueDecided + "\n";
+
+				respondToClient(tokenRcvd, keyPathPriv3, socket, response, port);
+
+				consensusRounds.put(consensusCounter, valueDecided);
+
 				System.out.printf("Sou bizantino e tentei trollar mas não deu e eles concordaram nisto " + valueDecided);
 			}
 			// Caso o processo seja bizantino e não respeite as mensagens PREPREPARE e o valor dos COMMITs e PREPAREs
 			else if (serverType.equals("B-PP")){
 				valueDecided = byzantineProcessPP(socket, consensusNumber, leaderPort, serverPorts, port);
 
+				String response = valueDecided + "\n";
+
+				respondToClient(tokenRcvd, keyPathPriv3, socket, response, port);
+
+				consensusRounds.put(consensusCounter, valueDecided);
+
 				System.out.printf("Sou bizantino e tentei trollar mas não deu e eles concordaram nisto " + valueDecided);
 			}
 			// Caso o processo seja bizantino e envie várias vezes PREPARE E COMMIT fora de ordem
 			else if (serverType.equals("B-PC-T")){
 				valueDecided = byzantineProcessPCT(socket, consensusNumber, leaderPort, serverPorts, port);
+
+				String response = valueDecided + "\n";
+
+				respondToClient(tokenRcvd, keyPathPriv3, socket, response, port);
+
+				consensusRounds.put(consensusCounter, valueDecided);
 
 				System.out.printf("Sou bizantino e tentei trollar mas não deu e eles concordaram nisto " + valueDecided);
 			}
