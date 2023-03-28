@@ -130,7 +130,8 @@ public class auxFunctions {
 		socket.send(ackPacket);
 
 		} catch (Exception e){
-			System.out.println("Failed to send ack");
+			System.err.println("Failed to send ack");
+            System.err.println(e.getMessage());
 		}
 	}
 
@@ -176,7 +177,8 @@ public class auxFunctions {
 		try{
 			hmacToCheck = digest(requestJson.toString().getBytes(UTF_8), "SHA3-256");
 		}catch (IllegalArgumentException e){
-			System.out.println("Failed to hash value");
+			System.err.println("Failed to hash value");
+            System.err.println(e.getMessage());
 		}
 
 		if(Base64.getEncoder().encodeToString(hmacToCheck).equals(hmac)){

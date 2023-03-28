@@ -60,7 +60,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
             socket.setSoTimeout(timeout);
             boolean ackReceived = false;
             while(!ackReceived){
-                System.out.println("vou enviar");
                 socket.send(packetToSend);
                 try {
 
@@ -79,7 +78,7 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
                     // If ack is from the expected server
                     if(ackDatagram.getPort() == portToSend && ack.equals("ack")){
-                        System.out.println("Recebi ack deste: " + portToSend);
+                        System.out.println("Received ack from this server: " + portToSend);
                         ackReceived = true;
                     }
                     else{
@@ -87,14 +86,14 @@ public class sendAndReceiveAck implements Callable<Integer> {
                     }
                 } catch (SocketTimeoutException e) {
                     //expected ack was not received
-                    System.out.println("Did not receive ack during timeout duration, will retransmit message");
+                    System.err.println("Did not receive ack during timeout duration, will retransmit message");
                     timeout += 1000;
                     
                 }
             }
             socket.close();
         }catch (Exception e){
-            System.out.printf("Couldn't send message to " + packetToSend.getAddress() + ":" + packetToSend.getPort() + "\n");
+            System.err.printf("Couldn't send message to " + packetToSend.getAddress() + ":" + packetToSend.getPort() + "\n");
         }
         return 0;
     }

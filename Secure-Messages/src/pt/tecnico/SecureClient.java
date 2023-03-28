@@ -34,60 +34,32 @@ public class SecureClient {
 	final static String keyPathPriv = "keys/userPriv.der";
 	final static String keyPathSecret = "keys/secret.key";
 
-	public static void sendAck(DatagramSocket socket, DatagramPacket packet){
-		// Create request message
-		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
-		{
-			message.addProperty("value", "ack");
-		}
-		try{
-			String clientDataToSend = auxF.ConvertToSend(message.toString());
-
-			DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
-			Base64.getDecoder().decode(clientDataToSend).length, packet.getAddress(), packet.getPort());
-
-			//send ack datagram
-			socket.send(ackPacket);
-
-		} catch (Exception e){
-			System.out.println("Failed to send ack");
-		}
-	}
-
-	public static String waitForQuorum(Integer consensusNumber, DatagramSocket socket){
-
+	public static String clientWaitForQuorum(Integer consensusNumber, DatagramSocket socket){
 		Map<String, List<Integer>> receivedResponses = new HashMap<String, List<Integer>>();
 
 		//Cycle waitin for quorum
 		while(true){
 			byte[] serverData = new byte[BUFFER_SIZE];
 			DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length);
-			System.out.printf("Tou à espera de quorum de servers\n");
+			System.out.printf("Wait for quorum of responses\n");
 			try{
 				// Receive response
 				socket.receive(serverPacket);
 
-				System.out.println("Received response");
-
-				sendAck(socket, serverPacket);
+				auxF.sendAck(socket, serverPacket);
 
 				String path = null;
-				System.out.println("Switch " + ((Integer)serverPacket.getPort()).toString());
 				switch(((Integer)serverPacket.getPort()).toString()){
 					case "12000":
-						System.out.println("Server 8000");
 						path = keyPathPublic;
 						break;
 					case "12001":
-						System.out.println("Server 8001");
 						path = keyPathPublic1;
 						break;
 					case "12002":
-						System.out.println("Server 8002");
 						path = keyPathPublic2;
 						break;
 					case "12003":
-						System.out.println("Server 8003");
 						path = keyPathPublic3;
 						break;
 				}
@@ -96,7 +68,8 @@ public class SecureClient {
 				try{
 					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(serverPacket.getData()), serverPacket.getLength());
 				}catch (Exception e){
-					System.out.println(e.getMessage());
+					System.err.println("Error parsing");
+					System.err.println(e.getMessage());
 				}
 
 				//Parse Json with payload and hmac
@@ -111,7 +84,8 @@ public class SecureClient {
 				try{
 					pMSDecrypted = auxF.do_RSADecryption(pMS, path);
 				}catch (Exception e){
-					System.out.println(e.getMessage());
+					System.err.println("Error in assymetric decryption");
+					System.err.println(e.getMessage());
 				}
 
 				byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
@@ -120,7 +94,8 @@ public class SecureClient {
 				try{
 					receivedFromJson = auxF.do_Decryption(receivedFromJson, key, 32);
 				}catch (Exception e){
-					System.out.println(e.getMessage());
+					System.err.println("Error in symetric decryption");
+					System.err.println(e.getMessage());
 				}
 
 				// Parse JSON and extract arguments
@@ -128,7 +103,8 @@ public class SecureClient {
 				try{
 					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
 				} catch (Exception e){
-					System.out.println("Failed to parse Json received");
+					System.err.println("Failed to parse Json received");
+					System.err.println(e.getMessage());
 				}
 
 				// Parse JSON and extract arguments
@@ -136,8 +112,6 @@ public class SecureClient {
 				{
 					body = requestJson.get("body").getAsString();
 				}
-
-				System.out.printf("Identity validated\n");
 			
 				// Add to list of received
 				if (receivedResponses.get(body) != null){
@@ -155,7 +129,8 @@ public class SecureClient {
 				}
 
 			}catch(Exception e){
-				System.out.println("Failed to receive or send message");
+				System.err.println("Failed in message");
+				System.err.println(e.getMessage());
 			}
 		}
 	}
@@ -199,8 +174,8 @@ public class SecureClient {
 			clientData = auxF.do_Encryption(requestJson.toString(), key);
 		}
 		catch (Exception e){
-			System.out.printf("RSA encryption failed\n");
-			System.out.println(e.getMessage());
+			System.err.printf("AES encryption failed\n");
+			System.err.println(e.getMessage());
 		}
 
 		String pSMEncrypted = null;
@@ -208,11 +183,9 @@ public class SecureClient {
 			pSMEncrypted = auxF.do_RSAEncryption(preMasterSecret, keyPathPriv);
 		}
 		catch (Exception e){
-			System.out.printf("RSA encryption failed\n");
-			System.out.println(e.getMessage());
+			System.err.printf("RSA encryption failed\n");
+			System.err.println(e.getMessage());
 		}
-
-		System.out.println(key);
 
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
@@ -225,8 +198,8 @@ public class SecureClient {
 			dataToSend = auxF.ConvertToSend(message.toString());
 		}
 		catch (Exception e){
-			System.out.printf("RSA encryption failed\n");
-			System.out.println(e.getMessage());
+			System.err.printf("Error parsing message\n");
+			System.err.println(e.getMessage());
 		}
 
 		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
@@ -245,16 +218,16 @@ public class SecureClient {
 		try{
 			for(int i = 0; i < serverPorts.size(); i++){
 				future.add(executorService.submit(myThreads.get(i)));
-				Integer result = future.get(i).get();
-				System.out.println("Thread já acabou com valor: " + result);
+				future.get(i).get();
 			}
 		}catch(Exception e){
-			System.out.println("Error launching threads");
+			System.err.println("Error launching threads");
+			System.err.println(e.getMessage());
 		}
 
 		Integer consensusNumber = (nrServers + (nrServers-1)/3)/2 + 1;
 
-		String body = waitForQuorum(consensusNumber, socket);
+		String body = clientWaitForQuorum(consensusNumber, socket);
 
 		// Close socket
 		socket.close();

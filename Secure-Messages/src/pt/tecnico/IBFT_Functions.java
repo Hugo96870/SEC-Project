@@ -40,13 +40,13 @@ public class IBFT_Functions{
 	public message_type mT;
 
 	public String waitForQuorum(Map<String, List<Integer>> values, Integer consensusNumber,
-						message_type type, DatagramSocket socket, Integer consensusCounter){
+						message_type type, DatagramSocket socket, Integer instanceNumber){
 
 		//Cycle waitin for quorum
 		String messageType = null, instance = null, value = null, idMainProcess = null;
 		while(true){
 			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
-			System.out.printf("Tou à espera deste pedido " + type + "\n");
+			System.out.printf("Waiting for this request " + type + "\n");
 			try{
 
 				socket.receive(messageFromServer);
@@ -57,7 +57,8 @@ public class IBFT_Functions{
 					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(messageFromServer.getData()), messageFromServer.getLength());
 				}
 				catch(Exception e){
-					System.out.println("Message conversion failed");
+					System.err.println("Message conversion failed");
+					System.err.println(e.getMessage());
 				}
 
 				//Parse Json with payload and hmac
@@ -73,13 +74,14 @@ public class IBFT_Functions{
 				try{
 					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
 				} catch (Exception e){
-					System.out.println("Failed to parse Json received");
+					System.err.println("Failed to parse Json received");
+					System.err.println(e.getMessage());
 				}
 
 				boolean integrityCheck = auxF.checkIntegrity(hmac, requestJson);
 
 				if(!integrityCheck){
-					System.out.println("Integrity violated");
+					System.err.println("Integrity violated");
 				}
 				else{
 					try{
@@ -90,13 +92,14 @@ public class IBFT_Functions{
 							idMainProcess = requestJson.get("idMainProcess").getAsString();
 						}
 					} catch (Exception e){
-						System.out.println("Failed to extract arguments from Json payload");
+						System.err.println("Failed to extract arguments from Json payload");
+						System.err.println(e.getMessage());
 					}
 
 					auxF.sendAck(socket, messageFromServer);
 
 					// If consensus instance is expected
-					if(Integer.parseInt(instance) == consensusCounter){
+					if(Integer.parseInt(instance) == instanceNumber){
 						// If we receive message type expected
 						if (messageType.equals(type.toString())){
 							// Add to list of received
@@ -111,7 +114,7 @@ public class IBFT_Functions{
 							}
 							// If we reached consensus
 							if(values.get(value).size() >= consensusNumber){
-								System.out.printf("Acordamos este valor " + value + " para " + type + "\n");
+								System.out.printf("Agrred on value " + value + " for type " + type + "\n");
 								return value;
 							}
 						}
@@ -119,24 +122,26 @@ public class IBFT_Functions{
 				}
 
 			}catch(Exception e){
-				System.out.println("Failed to receive or send message");
+				System.err.println("Failed in message");
+				System.err.println(e.getMessage());
 			}
 		}
 	}
 
 	public void sendMessageToAll(message_type type, String valueToSend, List<Integer> serverPorts,
-						Integer port, DatagramSocket socket, Integer consensusNumber, Integer consensusCounter){
+						Integer port, DatagramSocket socket, Integer consensusNumber, Integer instanceNumber){
 
 		InetAddress serverToSend = null;
 
 		try{
 			serverToSend = InetAddress.getByName("localhost");
 		}catch (Exception e){
-			System.out.printf("Cant resolve host\n");
+			System.err.printf("Cant resolve host\n");
+			System.err.println(e.getMessage());
 		}
 
 		//Send message to servers
-		System.out.println("Vou enviar pedidos do tipo: " + type);
+		System.out.println("Going to send the following requests " + type);
 
 		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
 		List<sendAndReceiveAck> myThreads = new ArrayList<>();
@@ -154,12 +159,13 @@ public class IBFT_Functions{
 					message = JsonParser.parseString("{}").getAsJsonObject();
 					{
 						message.addProperty("messageType", type.name());
-						message.addProperty("instance", consensusCounter.toString());
+						message.addProperty("instance", instanceNumber.toString());
 						message.addProperty("value", valueToSend);
 						message.addProperty("idMainProcess", ((Integer)(port % basePort)).toString());
 					}
 				} catch (Exception e){
-					System.out.println("Failed to parse Json and arguments");
+					System.err.println("Failed to parse Json and arguments");
+					System.err.println(e.getMessage());
 				}
 			
 
@@ -168,7 +174,8 @@ public class IBFT_Functions{
 				try{
 					hmac = auxF.digest(message.toString().getBytes(auxF.UTF_8), "SHA3-256");
 				}catch (IllegalArgumentException e){
-					System.out.println("Failed to hash value");
+					System.err.println("Failed to hash value");
+					System.err.println(e.getMessage());
 				}
 
 				//ENVIAR HMAC EM BASE 64
@@ -184,7 +191,8 @@ public class IBFT_Functions{
 					clientData = auxF.ConvertToSend(messageWithHMAC.toString());
 				}
 				catch (Exception e){
-					System.out.printf("Encryption with AES failed\n");
+					System.err.printf("Error in message parsing\n");
+					System.err.println(e.getMessage());
 				}
 
 				//Create datagram
@@ -193,7 +201,8 @@ public class IBFT_Functions{
 					packet = new DatagramPacket(Base64.getDecoder().decode(clientData),
 					Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
 				} catch (Exception e){
-					System.out.println("Failed to create Datagram");
+					System.err.println("Failed to create Datagram");
+					System.err.println(e.getMessage());
 				}
 
 				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i), 0));
@@ -206,7 +215,8 @@ public class IBFT_Functions{
 				executorService.submit(myThreads.get(i));
 			}
 		}catch(Exception e){
-			System.out.println("Error launching threads");
+			System.err.println("Error launching threads");
+			System.err.println(e.getMessage());
 		}
 	}
 

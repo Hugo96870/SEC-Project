@@ -53,18 +53,16 @@ Para correr o projeto será necessário ter previamente instado o [maven](https:
 
 Para lançar um processo servidor deverá executar o seguinte comando num terminal na diretoria que contém o ficheiro pom.xml:
 ```
-mvn compile exec:java -Dmainclass=pt.tecnico.SecureServer -Dexec.args="N Y Z K"
+mvn compile exec:java -Dmainclass=pt.tecnico.SecureServer -Dexec.args="N K"
 ```
 - Onde as variavéis tomam os seguintes valores:
-    - N é o tamanho da rede, obedecendo à regra N = 3F + 1
-    - Y é o port a que o server que está a invocar se irá ligar
-    - Z é o port do servidor lider
+    - N é o port a que o server que está a invocar se irá ligar
     - K é o estado do servidor que está a lançar, K pode ser um dos seguintes valores:
-        - L: para indicar que o processo é o líder
-        - N: Para indicar que o processo será um processo correto, mas não o líder.
-        - B-PC: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT.
-        - B-PP: para indicar que o processo terá um comportamento bizantino em que irá enviar mensagen de PREPREPARE embora não seja o líder.
-        - B-PC-T: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT e irá enviar várias mensagens de PREPARE E COMMIT fora de ordem.
+        - LEADER: para indicar que o processo é o líder
+        - NORMAL: Para indicar que o processo será um processo correto, mas não o líder.
+        - B_PC: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT.
+        - B_PP: para indicar que o processo terá um comportamento bizantino em que irá enviar mensagen de PREPREPARE embora não seja o líder.
+        - B_PC_T: para indicar que o processo terá um comportamento bizantino em que não transmite o valor correto na mensagem de PREPARE e COMMIT e irá enviar várias mensagens de PREPARE E COMMIT fora de ordem.
 
 Para lançar um processo cliente deverá executar o seguinte comando num terminal na diretoria que contém o ficheiro pom.xml:
 ```
