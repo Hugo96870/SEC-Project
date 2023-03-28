@@ -19,7 +19,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
 	private static byte[] buf = new byte[BUFFER_SIZE];
 
-
     DatagramPacket packetToSend;
     Integer portToSend;
     Integer myPort;

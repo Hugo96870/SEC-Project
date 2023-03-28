@@ -1,149 +1,38 @@
 package pt.tecnico;
 
 import java.net.*;
-import java.security.PrivateKey;
-import java.security.PublicKey;
-import java.security.spec.*;
-import javax.crypto.Cipher;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.security.KeyFactory;
-import java.security.spec.PKCS8EncodedKeySpec;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Callable;
 import java.util.concurrent.*;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
+import javax.crypto.SecretKey;
 
 public class SecureClient {
 
 	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
 
+	private static auxFunctions auxF = new auxFunctions();
+
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
+	//Key paths
 	final static String keyPathPublic = "keys/serverPub.der";
 	final static String keyPathPublic1 = "keys/serverPub1.der";
 	final static String keyPathPublic2 = "keys/serverPub2.der";
 	final static String keyPathPublic3 = "keys/serverPub3.der";
 	final static String keyPathPriv = "keys/userPriv.der";
-
-	private static final Charset UTF_8 = StandardCharsets.UTF_8;
-
-	public static byte[] digest(byte[] input, String algorithm) {
-        MessageDigest md;
-        try {
-            md = MessageDigest.getInstance(algorithm);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException(e);
-        }
-        byte[] result = md.digest(input);
-        return result;
-    }
-
-	public static boolean checkIntegrity(String hmac, JsonObject requestJson){
-		//Verify integrity with hmac
-		byte[] hmacToCheck = null;
-		try{
-			hmacToCheck = digest(requestJson.toString().getBytes(UTF_8), "SHA3-256");
-		}catch (IllegalArgumentException e){
-			System.out.println("Failed to hash value");
-		}
-
-		if(Base64.getEncoder().encodeToString(hmacToCheck).equals(hmac)){
-			System.out.println("Integrity validated");
-			return true;
-		}
-		return false;
-	}
-
-    public static String ConvertToSend(String plainText) throws Exception
-    {
-		// Convert the string to be encrypted to a byte array
-		byte[] plaintextBytes = plainText.getBytes("UTF-8");
-
-		// Encode the encrypted byte array to Base64 encoding
-		String clientDataToSend = Base64.getEncoder().encodeToString(plaintextBytes);
-
-		return clientDataToSend;
-    }
-
-	/*Decryption function with secret key */
-    public static String ConvertReceived(String cipherText, int lenght) throws Exception
-    {
-		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
-
-		byte[] finalCipherText = new byte[lenght];
-		System.arraycopy(ciphertextBytes, 0, finalCipherText, 0, lenght);
-
-		// Convert the decrypted byte array to a string
-		String clientText = new String(finalCipherText, "UTF-8");
-
-		return clientText;
-    }
-
-	/*Encryption function using RSA algorithm */
-    public static String do_RSAEncryption(String plainText, String path) throws Exception
-    {
-
-		// Load the private key from the .key file
-		byte[] privateKeyBytes = Files.readAllBytes(Paths.get(path));
-		PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
-		KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-		PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
-
-        // Convert the string to be encrypted into a byte array
-        byte[] plaintextBytes = plainText.getBytes("UTF-8");
-
-        // Create an instance of the Cipher class using the RSA algorithm and initialize it with the private key
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.ENCRYPT_MODE, privateKey);
-
-        // Use the Cipher object to encrypt the byte array
-        byte[] ciphertextBytes = cipher.doFinal(plaintextBytes);
-
-        // Encode the encrypted byte array into a string using Base64 encoding
-        String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
-
-		return ciphertext;
-    }
-
-    public static String do_RSADecryption(String cipherText, String path) throws Exception
-    {
-        // Load the public key from the .key file
-        byte[] publicKeyBytes = Files.readAllBytes(Paths.get(path));
-        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        PublicKey publicKey = keyFactory.generatePublic(keySpec);
-
-        // Decode the encrypted string from Base64 encoding to a byte array
-    	byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
-
-        // Create an instance of the Cipher class using the RSA algorithm and initialize it with the public key
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.DECRYPT_MODE, publicKey);
-
-        // Use the Cipher object to decrypt the byte array
-        byte[] plaintextBytes = cipher.doFinal(ciphertextBytes);
-
-        // Convert the decrypted byte array to a string
-        String plaintext = new String(plaintextBytes, "UTF-8");
-
-		return plaintext;
-    }
+	final static String keyPathSecret = "keys/secret.key";
 
 	public static void sendAck(DatagramSocket socket, DatagramPacket packet){
 		// Create request message
@@ -152,13 +41,13 @@ public class SecureClient {
 			message.addProperty("value", "ack");
 		}
 		try{
-		String clientDataToSend = ConvertToSend(message.toString());
+			String clientDataToSend = auxF.ConvertToSend(message.toString());
 
-		DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
-		Base64.getDecoder().decode(clientDataToSend).length, packet.getAddress(), packet.getPort());
+			DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
+			Base64.getDecoder().decode(clientDataToSend).length, packet.getAddress(), packet.getPort());
 
-		//send ack datagram
-		socket.send(ackPacket);
+			//send ack datagram
+			socket.send(ackPacket);
 
 		} catch (Exception e){
 			System.out.println("Failed to send ack");
@@ -182,14 +71,6 @@ public class SecureClient {
 
 				sendAck(socket, serverPacket);
 
-				String serverText = null;
-				try{
-					serverText = ConvertReceived(Base64.getEncoder().encodeToString(serverPacket.getData()), serverPacket.getLength());
-				}
-				catch(Exception e){
-					System.out.println("Decryption with AES failed");
-				}
-
 				String path = null;
 				System.out.println("Switch " + ((Integer)serverPacket.getPort()).toString());
 				switch(((Integer)serverPacket.getPort()).toString()){
@@ -211,59 +92,66 @@ public class SecureClient {
 						break;
 				}
 
+				String clientText = null;
+				try{
+					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(serverPacket.getData()), serverPacket.getLength());
+				}catch (Exception e){
+					System.out.println(e.getMessage());
+				}
+
 				//Parse Json with payload and hmac
-				JsonObject received = JsonParser.parseString(serverText).getAsJsonObject();
-				String hmacRcvd = null, receivedFromJson = null;
+				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+				String receivedFromJson = null, pMS = null;
 				{
-					hmacRcvd = received.get("hmac").getAsString();
 					receivedFromJson = received.get("payload").getAsString();
+					pMS = received.get("PSM").getAsString();
+				}
+
+				String pMSDecrypted = null;
+				try{
+					pMSDecrypted = auxF.do_RSADecryption(pMS, path);
+				}catch (Exception e){
+					System.out.println(e.getMessage());
+				}
+
+				byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
+				SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
+
+				try{
+					receivedFromJson = auxF.do_Decryption(receivedFromJson, key, 32);
+				}catch (Exception e){
+					System.out.println(e.getMessage());
 				}
 
 				// Parse JSON and extract arguments
-				JsonObject responseJson = null;
+				JsonObject requestJson = null;
 				try{
-					responseJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
 				} catch (Exception e){
 					System.out.println("Failed to parse Json received");
 				}
 
-				boolean integrityCheck = checkIntegrity(hmacRcvd, responseJson);
-
-				if(!integrityCheck){
-					System.out.println("Integrity violated");
+				// Parse JSON and extract arguments
+				String body = null;
+				{
+					body = requestJson.get("body").getAsString();
 				}
-				else{
-					// Parse JSON and extract arguments
-					String body = null, tokenRcvd = null;
-					{
-						JsonObject infoJson = responseJson.getAsJsonObject("info");
-						tokenRcvd = infoJson.get("token").getAsString();
-						body = responseJson.get("body").getAsString();
-					}
-					try{
-						System.out.println("Path: " + path);
-						tokenRcvd = do_RSADecryption(tokenRcvd, path);
-					}
-					catch (Exception e){
-						System.out.printf("Identity invalid\n");
-					}
 
-					System.out.printf("Identity validated\n");
-				
-					// Add to list of received
-					if (receivedResponses.get(body) != null){
-						if(!receivedResponses.get(body).contains(serverPacket.getPort())){
-							receivedResponses.get(body).add(serverPacket.getPort());
-						}
-					}
-					else{
-						receivedResponses.put(body, new ArrayList<Integer>());
+				System.out.printf("Identity validated\n");
+			
+				// Add to list of received
+				if (receivedResponses.get(body) != null){
+					if(!receivedResponses.get(body).contains(serverPacket.getPort())){
 						receivedResponses.get(body).add(serverPacket.getPort());
 					}
-					// If we reached consensus
-					if(receivedResponses.get(body).size() >= consensusNumber){
-						return body;
-					}
+				}
+				else{
+					receivedResponses.put(body, new ArrayList<Integer>());
+					receivedResponses.get(body).add(serverPacket.getPort());
+				}
+				// If we reached consensus
+				if(receivedResponses.get(body).size() >= consensusNumber){
+					return body;
 				}
 
 			}catch(Exception e){
@@ -280,8 +168,6 @@ public class SecureClient {
 			System.exit(1);
 		}
 
-		String tokenToString = null;
-
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
 		final String sentence = args[1];
@@ -293,51 +179,54 @@ public class SecureClient {
 			serverPorts.add(8000 + i);
 		}
 
-        Integer token = 0;
-		
-		try{
-			tokenToString = do_RSAEncryption(token.toString(), keyPathPriv);
-		}
-		catch (Exception e){
-			System.out.printf("RSA encryption failed\n");
-			System.out.println(e.getMessage());
-		}
-		
 		// Create socket
 		DatagramSocket socket = new DatagramSocket(10000);
 
         // Create request message
 		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
-			requestJson.add("info", infoJson);
-            infoJson.addProperty("token", tokenToString);
 			String bodyText = sentence;
 			requestJson.addProperty("body", bodyText);
 		}
 
-		//Create hmac to assure integrity
-		byte[] hmac = null;
-		try{
-			hmac = digest(requestJson.toString().getBytes(UTF_8), "SHA3-256");
-		}catch (IllegalArgumentException e){
-			System.out.println("Failed to hash value");
-		}
+		String preMasterSecret = "0";
 
-		//ENVIAR HMAC EM BASE 64
-		JsonObject messageWithHMAC = JsonParser.parseString("{}").getAsJsonObject();
-		{
-			messageWithHMAC.addProperty("payload", requestJson.toString());
-			messageWithHMAC.addProperty("hmac", Base64.getEncoder().encodeToString(hmac));
-		}
+		byte[] secretKeyinByte = auxF.digest(preMasterSecret.getBytes(auxF.UTF_8), "SHA3-256");
+		SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
 
 		String clientData = null;
-		//Encrypt datagram with AES and simetric key
 		try{
-			clientData = ConvertToSend(messageWithHMAC.toString());
+			clientData = auxF.do_Encryption(requestJson.toString(), key);
 		}
 		catch (Exception e){
-			System.out.printf("Encryption with AES failed\n");
+			System.out.printf("RSA encryption failed\n");
+			System.out.println(e.getMessage());
+		}
+
+		String pSMEncrypted = null;
+		try{
+			pSMEncrypted = auxF.do_RSAEncryption(preMasterSecret, keyPathPriv);
+		}
+		catch (Exception e){
+			System.out.printf("RSA encryption failed\n");
+			System.out.println(e.getMessage());
+		}
+
+		System.out.println(key);
+
+		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			message.addProperty("payload", clientData);
+			message.addProperty("PSM", pSMEncrypted);
+		}
+
+		String dataToSend = null;
+		try{
+			dataToSend = auxF.ConvertToSend(message.toString());
+		}
+		catch (Exception e){
+			System.out.printf("RSA encryption failed\n");
+			System.out.println(e.getMessage());
 		}
 
 		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
@@ -347,8 +236,8 @@ public class SecureClient {
 		for(int i = 0; i < nrServers; i++){
 			//SendMessagetoAll
 
-			DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(clientData),
-					Base64.getDecoder().decode(clientData).length, serverAddress, serverPorts.get(i) + 3000);
+			DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(dataToSend),
+					Base64.getDecoder().decode(dataToSend).length, serverAddress, serverPorts.get(i) + 3000);
 
 			myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, 0));
 		}
