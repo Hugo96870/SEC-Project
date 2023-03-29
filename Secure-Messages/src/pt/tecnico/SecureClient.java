@@ -77,7 +77,7 @@ public class SecureClient {
 				String receivedFromJson = null, pMS = null;
 				{
 					receivedFromJson = received.get("payload").getAsString();
-					pMS = received.get("PSM").getAsString();
+					pMS = received.get("PMS").getAsString();
 				}
 
 				String pMSDecrypted = null;
@@ -178,9 +178,9 @@ public class SecureClient {
 			System.err.println(e.getMessage());
 		}
 
-		String pSMEncrypted = null;
+		String pMSEncrypted = null;
 		try{
-			pSMEncrypted = auxF.do_RSAEncryption(preMasterSecret, keyPathPriv);
+			pMSEncrypted = auxF.do_RSAEncryption(preMasterSecret, keyPathPriv);
 		}
 		catch (Exception e){
 			System.err.printf("RSA encryption failed\n");
@@ -190,7 +190,7 @@ public class SecureClient {
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
 			message.addProperty("payload", clientData);
-			message.addProperty("PSM", pSMEncrypted);
+			message.addProperty("PMS", pMSEncrypted);
 		}
 
 		String dataToSend = null;

@@ -38,6 +38,67 @@ public class SecureServer {
 	private static final String keyPathPriv3 = "keys/serverPriv3.der";
 	final static String keyPathSecret = "keys/secret.key";
 
+	private static SecretKey key;
+	private static String pMS;
+
+	public static String parseInput(DatagramPacket clientPacket){
+
+		String clientText = null;
+		try{
+			clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(clientPacket.getData()), clientPacket.getLength());
+		}catch (Exception e){
+			System.err.println("Error parsing arguments");
+			System.err.println(e.getMessage());
+		}
+
+		//Parse Json with payload and hmac
+		JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+		String receivedFromJson = null, preMS = null;
+		{
+			receivedFromJson = received.get("payload").getAsString();
+			preMS = received.get("PMS").getAsString();
+		}
+
+		String pMSDecrypted = null;
+		try{
+			pMSDecrypted = auxF.do_RSADecryption(preMS, keyPathClientPublic);
+		}catch (Exception e){
+			System.err.println("Error in assymetric decryption");
+			System.err.println(e.getMessage());
+		}
+
+		pMS = pMSDecrypted;
+
+		byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
+		key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
+
+		try{
+			receivedFromJson = auxF.do_Decryption(receivedFromJson, key, 32);
+		}catch (Exception e){
+			System.err.println("Error in symetric decryption");
+			System.err.println(e.getMessage());
+		}
+
+		// Parse JSON and extract arguments
+		JsonObject requestJson = null;
+		try{
+			requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+		} catch (Exception e){
+			System.err.println("Failed to parse Json received");
+			System.err.println(e.getMessage());
+		}
+
+		// Parse JSON and extract arguments
+		requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+		String body = null;
+		{
+			body = requestJson.get("body").getAsString();
+		}
+
+		return body;
+	}
+
+
 	public static String receivePrePrepare(DatagramSocket socket, Integer leaderPort, Integer instanceNumber){
 
 		System.out.println("I will wait for PREPREPARE");
@@ -179,7 +240,7 @@ public class SecureServer {
 
 	//Sends encrypted message to client confirming the string appended
 	public static void respondToClient(String keyPathPriv,
-									DatagramSocket socket, String valueToSend, Integer port, SecretKey key, String psm){
+									DatagramSocket socket, String valueToSend, Integer port, SecretKey key, String pms){
 		/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 
 		// Create response message
@@ -197,9 +258,9 @@ public class SecureServer {
 			System.err.println(e.getMessage());
 		}
 
-		String pSMEncrypted = null;
+		String pMSEncrypted = null;
 		try{
-			pSMEncrypted = auxF.do_RSAEncryption(psm, keyPathPriv);
+			pMSEncrypted = auxF.do_RSAEncryption(pms, keyPathPriv);
 		}
 		catch (Exception e){
 			System.err.printf("RSA encryption failed\n");
@@ -209,7 +270,7 @@ public class SecureServer {
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
 			message.addProperty("payload", clientData);
-			message.addProperty("PSM", pSMEncrypted);
+			message.addProperty("PMS", pMSEncrypted);
 		}
 
 		String dataToSend = null;
@@ -366,6 +427,7 @@ public class SecureServer {
 
 		//Create blockChain State
 		blockChain bC = new blockChain();
+		List<operation> block = new ArrayList<operation>();
 
 		//Initialization algorithm variables
 		String inputValue;
@@ -387,75 +449,27 @@ public class SecureServer {
 
 		// Wait for client packets 
 		while (true) {
+			if(((Integer)block.size()).equals(bC.getBlockSize())){
+				bC.executeBlock(block);
+				block.clear();
+			}
 
-				/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
-				Integer flag = 0;
-				try{
-					while(flag.equals(0)){
-						clientPacket = queue.take();
-						System.out.println("Received message from client");
-						flag = 1;
-					}
-				} catch (Exception e){
-					System.err.println("Queue error");
-					System.err.println(e.getMessage());
+			/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
+			Integer flag = 0;
+			try{
+				while(flag.equals(0)){
+					clientPacket = queue.take();
+					System.out.println("Received message from client");
+					flag = 1;
 				}
+			} catch (Exception e){
+				System.err.println("Queue error");
+				System.err.println(e.getMessage());
+			}
 
-				String clientText = null;
-				try{
-					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(clientPacket.getData()), clientPacket.getLength());
-				}catch (Exception e){
-					System.err.println("Error parsing arguments");
-					System.err.println(e.getMessage());
-				}
+			inputValue = parseInput(clientPacket);
 
-				//Parse Json with payload and hmac
-				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
-				String receivedFromJson = null, pMS = null;
-				{
-					receivedFromJson = received.get("payload").getAsString();
-					pMS = received.get("PSM").getAsString();
-				}
-
-				String pMSDecrypted = null;
-				try{
-					pMSDecrypted = auxF.do_RSADecryption(pMS, keyPathClientPublic);
-				}catch (Exception e){
-					System.err.println("Error in assymetric decryption");
-					System.err.println(e.getMessage());
-				}
-
-				byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
-				SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
-
-				try{
-					receivedFromJson = auxF.do_Decryption(receivedFromJson, key, 32);
-				}catch (Exception e){
-					System.err.println("Error in symetric decryption");
-					System.err.println(e.getMessage());
-				}
-
-				// Parse JSON and extract arguments
-				JsonObject requestJson = null;
-				try{
-					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
-				} catch (Exception e){
-					System.err.println("Failed to parse Json received");
-					System.err.println(e.getMessage());
-				}
-
-				// Parse JSON and extract arguments
-				requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
-				String body = null;
-				{
-					body = requestJson.get("body").getAsString();
-				}
-
-				inputValue = body;
-
-				System.out.printf("Identity certified and received message: " + body + "\n");
-
-			//Algoritmo 1
+			//Algoritmo
 			if(bC.isLeader(port)){
 				System.out.println("Im the leader");
 	/* ------------------------------------- Broadcast PREPREPARE message ------------------------------ */
@@ -475,7 +489,7 @@ public class SecureServer {
 
 				String response = valueDecided + "\n";
 
-				respondToClient(keyPathPriv, socket, response, port, key, pMSDecrypted);
+				respondToClient(keyPathPriv, socket, response, port, key, pMS);
 
 				bC.addToRound(bC.getInstance(), valueDecided);
 			}
@@ -497,7 +511,7 @@ public class SecureServer {
 						break;
 				}
 
-				respondToClient(path, socket, response, port, key, pMSDecrypted);
+				respondToClient(path, socket, response, port, key, pMS);
 
 				System.out.printf("Im a normal server and this was the value agreed: " + valueDecided + "\n");
 
@@ -511,7 +525,7 @@ public class SecureServer {
 
 				String response = valueDecided + "\n";
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMSDecrypted);
+				respondToClient(keyPathPriv3, socket, response, port, key, pMS);
 
 				bC.addToRound(bC.getInstance(), valueDecided);
 
@@ -523,7 +537,7 @@ public class SecureServer {
 
 				String response = valueDecided + "\n";
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMSDecrypted);
+				respondToClient(keyPathPriv3, socket, response, port, key, pMS);
 
 				bC.addToRound(bC.getInstance(), valueDecided);
 
@@ -535,7 +549,7 @@ public class SecureServer {
 
 				String response = valueDecided + "\n";
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMSDecrypted);
+				respondToClient(keyPathPriv3, socket, response, port, key, pMS);
 
 				bC.addToRound(bC.getInstance(), valueDecided);
 

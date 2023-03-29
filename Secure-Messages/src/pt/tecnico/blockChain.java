@@ -3,6 +3,11 @@ package pt.tecnico;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+
+import javax.xml.transform.Source;
+
+import pt.tecnico.operation.operation_type;
+
 import java.util.HashMap;
 
 public class blockChain{
@@ -15,6 +20,9 @@ public class blockChain{
         B_PC_T,
         B_PP;
 	}
+
+    private final Integer startBalance = 100;
+    private final Integer blockSize = 5;
 
     public server_type sT;
 
@@ -31,6 +39,10 @@ public class blockChain{
 
     Map<Integer, String> consensusRounds;
 
+    Map<byte[], Integer> accounts;
+
+    List<operation> operations;
+
     public blockChain(){
         nrPorts = 4;
 
@@ -40,12 +52,15 @@ public class blockChain{
         }
 
         leaderPort = 8000;
-
         consensusMajority = (nrPorts + (nrPorts-1)/3)/2 + 1;
-
         consensusRounds = new HashMap<Integer,String>();
-
         instanceNumber = 0;
+        accounts = new HashMap<byte[], Integer>();
+        operations = new ArrayList<operation>();
+    }
+
+    public Integer getBlockSize(){
+        return blockSize;
     }
 
     public Integer getNrPorts(){
@@ -80,4 +95,43 @@ public class blockChain{
         instanceNumber++;
     }
 
+    public boolean create_account(byte[] key){
+        if(!accounts.containsKey(key)){
+            accounts.put(key, startBalance);
+            return true;
+        }
+        System.err.println("Account exists");
+        return false;
+    }
+
+    public Integer check_balance(byte[] key){
+        return accounts.get(key);
+    }
+
+    //DUVIDA: TAXA DO LIDER
+    public boolean transfer(byte[] source, byte[] destination, int amount){
+        if(!accounts.containsKey(source) || !accounts.containsKey(destination) || accounts.get(source) < amount){
+            System.err.println("Can't perform the transaction");
+            return false;
+        }
+        accounts.replace(source, accounts.get(source), accounts.get(source) - amount);
+        accounts.replace(destination, accounts.get(destination), accounts.get(destination) + amount);
+        return true;
+    }
+
+    //Execute every operation in the block received
+    public void executeBlock(List<operation> block){
+        for(operation op: block){
+            if(op.getID().equals(operation_type.CREATE)){
+                if(create_account(op.getSource())){
+                    operations.add(op);
+                }
+            }
+            else{
+                if(transfer(op.getSource(), op.getDestination(), op.getAmount())){
+                    operations.add(op);
+                }
+            }
+        }
+    }
 }
