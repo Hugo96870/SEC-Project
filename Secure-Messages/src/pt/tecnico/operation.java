@@ -1,5 +1,7 @@
 package pt.tecnico;
 
+import java.security.PublicKey;
+
 public class operation{
 
     enum operation_type{
@@ -8,27 +10,29 @@ public class operation{
     }
 
     operation_type identifier;
-    byte[] source;
-    byte[] destination;
+    PublicKey source;
+    PublicKey destination;
     Integer amount;
 
-    public operation(String identifier, byte[] source, byte[] destination, Integer amount){
+    public operation(String identifier, PublicKey source, PublicKey destination, Integer amount){
         this.identifier = operation_type.TRANSFER;
         this.source = source;
         this.destination = destination;
         this.amount = amount;
     }
 
-    public operation(String identifier, byte[] source){
+    public operation(String identifier, PublicKey source){
         this.identifier = operation_type.CREATE;
         this.source = source;
+        this.destination = null;
+        this.amount = null;
     }
 
-    public byte[] getSource(){
+    public PublicKey getSource(){
         return source;
     }
 
-    public byte[] getDestination(){
+    public PublicKey getDestination(){
         return destination;
     }
 
@@ -38,6 +42,15 @@ public class operation{
 
     public operation_type getID(){
         return identifier;
+    }
+
+    public String toString(){
+        if(this.identifier.equals(operation_type.CREATE)){
+            return this.identifier.toString() + " " + this.source.toString();
+        }
+        else{
+            return this.identifier.toString() + " " + this.source.toString() + " " + this.destination.toString() + " " + this.amount.toString();
+        }
     }
 
 }

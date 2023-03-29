@@ -1,10 +1,9 @@
 package pt.tecnico;
 
 import java.util.List;
+import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.Map;
-
-import javax.xml.transform.Source;
 
 import pt.tecnico.operation.operation_type;
 
@@ -37,9 +36,7 @@ public class blockChain{
     //Number to achieve consensus
     private Integer consensusMajority;
 
-    Map<Integer, String> consensusRounds;
-
-    Map<byte[], Integer> accounts;
+    Map<PublicKey, Integer> accounts;
 
     List<operation> operations;
 
@@ -53,9 +50,8 @@ public class blockChain{
 
         leaderPort = 8000;
         consensusMajority = (nrPorts + (nrPorts-1)/3)/2 + 1;
-        consensusRounds = new HashMap<Integer,String>();
         instanceNumber = 0;
-        accounts = new HashMap<byte[], Integer>();
+        accounts = new HashMap<PublicKey, Integer>();
         operations = new ArrayList<operation>();
     }
 
@@ -83,10 +79,6 @@ public class blockChain{
         return consensusMajority;
     }
 
-    public void addToRound(Integer round, String value){
-        consensusRounds.put(round, value);
-    }
-
     public Integer getInstance(){
         return instanceNumber;
     }
@@ -95,7 +87,7 @@ public class blockChain{
         instanceNumber++;
     }
 
-    public boolean create_account(byte[] key){
+    public boolean create_account(PublicKey key){
         if(!accounts.containsKey(key)){
             accounts.put(key, startBalance);
             return true;
@@ -104,12 +96,12 @@ public class blockChain{
         return false;
     }
 
-    public Integer check_balance(byte[] key){
+    public Integer check_balance(PublicKey key){
         return accounts.get(key);
     }
 
     //DUVIDA: TAXA DO LIDER
-    public boolean transfer(byte[] source, byte[] destination, int amount){
+    public boolean transfer(PublicKey source, PublicKey destination, int amount){
         if(!accounts.containsKey(source) || !accounts.containsKey(destination) || accounts.get(source) < amount){
             System.err.println("Can't perform the transaction");
             return false;
@@ -120,7 +112,7 @@ public class blockChain{
     }
 
     //Execute every operation in the block received
-    public void executeBlock(List<operation> block){
+    public List<operation> executeBlock(List<operation> block){
         for(operation op: block){
             if(op.getID().equals(operation_type.CREATE)){
                 if(create_account(op.getSource())){
@@ -133,5 +125,7 @@ public class blockChain{
                 }
             }
         }
+
+        return this.operations;
     }
 }

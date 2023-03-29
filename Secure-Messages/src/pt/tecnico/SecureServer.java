@@ -4,14 +4,13 @@ import java.net.*;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.security.PublicKey;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import pt.tecnico.IBFT_Functions.message_type;
 import pt.tecnico.blockChain.server_type;
-
 import java.util.Base64;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +30,9 @@ public class SecureServer {
 	//private static byzantineBehaviours byzB = new byzantineBehaviours(ibft_f);
 
 	//Key paths
-	private static final String keyPathClientPublic = "keys/userPub.der";
+	private final static String keyPathPubAlice = "keys/userPub.der";
+	private final static String keyPathPubBob = "keys/userBobPub.der";
+	private final static String keyPathPubCharlie = "keys/userCharliePub.der";
 	private static final String keyPathPriv = "keys/serverPriv.der";
 	private static final String keyPathPriv1 = "keys/serverPriv1.der";
 	private static final String keyPathPriv2 = "keys/serverPriv2.der";
@@ -41,8 +42,8 @@ public class SecureServer {
 	private static SecretKey key;
 	private static String pMS;
 
-	public static String parseInput(DatagramPacket clientPacket){
-
+	public static operation parseInput(DatagramPacket clientPacket, String pathToKey){
+	
 		String clientText = null;
 		try{
 			clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(clientPacket.getData()), clientPacket.getLength());
@@ -61,7 +62,7 @@ public class SecureServer {
 
 		String pMSDecrypted = null;
 		try{
-			pMSDecrypted = auxF.do_RSADecryption(preMS, keyPathClientPublic);
+			pMSDecrypted = auxF.do_RSADecryption(preMS, pathToKey);
 		}catch (Exception e){
 			System.err.println("Error in assymetric decryption");
 			System.err.println(e.getMessage());
@@ -73,7 +74,7 @@ public class SecureServer {
 		key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
 
 		try{
-			receivedFromJson = auxF.do_Decryption(receivedFromJson, key, 32);
+			receivedFromJson = auxF.do_Decryption(receivedFromJson, key, Base64.getDecoder().decode(receivedFromJson).length);
 		}catch (Exception e){
 			System.err.println("Error in symetric decryption");
 			System.err.println(e.getMessage());
@@ -90,12 +91,57 @@ public class SecureServer {
 
 		// Parse JSON and extract arguments
 		requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
-		String body = null;
+		String type = null;
 		{
-			body = requestJson.get("body").getAsString();
+			type = requestJson.get("type").getAsString();
+		}
+		operation op = null;
+		PublicKey keySrc = null, keyDest = null;
+		byte[] keySource = null, keyDestination = null;
+		switch(type){
+			case("CREATE"):
+				String pubKey = null;
+				{
+					pubKey = requestJson.get("pubKey").getAsString();
+				}
+
+				try{
+					keySource = pubKey.getBytes("UTF-8");
+				} catch(Exception e){
+					System.err.println("Error converting key");
+					System.err.println(e.getMessage());
+				}
+
+				keySrc = auxF.convertByteIntoPK(keySource);
+				
+				op = new operation("CREATE", keySrc);
+				break;
+			case("TRANSFER"):
+				String source = null, dest = null, amount = null;
+				{
+					source = requestJson.get("source").getAsString();
+					dest = requestJson.get("dest").getAsString();
+					amount = requestJson.get("amount").getAsString();
+				}
+
+				try{
+					keyDestination = dest.getBytes("UTF-8");
+					keySource = source.getBytes("UTF-8");
+				} catch(Exception e){
+					System.err.println("Error converting key");
+					System.err.println(e.getMessage());
+				}
+
+				keyDest = auxF.convertByteIntoPK(keyDestination);
+				keySrc = auxF.convertByteIntoPK(keySource);
+
+				op = new operation("TRANSFER", keySrc, keyDest, Integer.parseInt(amount));
+				break;
+			default:
+				break;
 		}
 
-		return body;
+		return op;
 	}
 
 
@@ -240,7 +286,7 @@ public class SecureServer {
 
 	//Sends encrypted message to client confirming the string appended
 	public static void respondToClient(String keyPathPriv,
-									DatagramSocket socket, String valueToSend, Integer port, SecretKey key, String pms){
+									DatagramSocket socket, String valueToSend, Integer port, SecretKey key, String pms, int clientPort){
 		/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 
 		// Create response message
@@ -290,10 +336,11 @@ public class SecureServer {
 			System.err.printf("Cant resolve host\n");
 			System.err.println(e.getMessage());
 		}
+
+		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(dataToSend),
+						Base64.getDecoder().decode(dataToSend).length, hostToSend, clientPort);
 		
-		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(dataToSend), Base64.getDecoder().decode(dataToSend).length, hostToSend, 10000);
-		
-		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, 10000, port + 4000);
+		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, clientPort, port + 4000);
 
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -305,8 +352,7 @@ public class SecureServer {
 			System.err.println("Failed to wait for thread");
 			System.err.println(e.getMessage());
 		}
-
-		System.out.printf("Response packet sent to %s:%d! and received ack \n", hostToSend, 10000);
+		System.out.printf("Response packet sent to %s:%d! and received ack \n", hostToSend, clientPort);
 
 	}
 
@@ -438,6 +484,8 @@ public class SecureServer {
 		System.out.printf("Server will receive packets on port %d %n", port);
 
 		List<DatagramPacket> requests = new ArrayList<>();
+		//Value to be sent to client
+		String response;
 
 		//Thread that receives inputs
 		BlockingQueue<DatagramPacket> queue = new LinkedBlockingQueue<>();
@@ -447,10 +495,15 @@ public class SecureServer {
 
 		DatagramPacket clientPacket = null;
 
+		List<operation> operations;
+
 		// Wait for client packets 
 		while (true) {
 			if(((Integer)block.size()).equals(bC.getBlockSize())){
-				bC.executeBlock(block);
+				operations = bC.executeBlock(block);
+				for (operation op: operations){
+					System.out.println(op.toString());
+				}
 				block.clear();
 			}
 
@@ -467,7 +520,22 @@ public class SecureServer {
 				System.err.println(e.getMessage());
 			}
 
-			inputValue = parseInput(clientPacket);
+			String keyToDecrypt = null;
+			switch(((Integer)clientPacket.getPort()).toString()){
+				case "10003":
+					keyToDecrypt = keyPathPubAlice;
+					break;
+				case "10004":
+					keyToDecrypt = keyPathPubBob;
+					break;
+				case "10005":
+					keyToDecrypt = keyPathPubCharlie;
+					break;
+			}
+
+			operation op = parseInput(clientPacket, keyToDecrypt);
+
+			inputValue = bC.getInstance().toString();
 
 			//Algoritmo
 			if(bC.isLeader(port)){
@@ -486,12 +554,19 @@ public class SecureServer {
 				valueDecided = leaderConsensus(socket, bC.getConsensusMajority(), inputValue, bC.getPorts(), port, bC);
 
 /* --------------------------------------------------------------------------------------------------------------------------- */
+				if(valueDecided.equals(inputValue)){
+					System.out.println("All good");
+					response = "OK";
+				}
+				else{
+					response = "No Decision";
+				}
 
-				String response = valueDecided + "\n";
+				System.out.println("Going to respond to client");
 
-				respondToClient(keyPathPriv, socket, response, port, key, pMS);
+				respondToClient(keyPathPriv, socket, response, port, key, pMS, clientPacket.getPort() - 3);
 
-				bC.addToRound(bC.getInstance(), valueDecided);
+				block.add(op);
 			}
 			else if (serverType.equals(server_type.NORMAL.toString())){
 			/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
@@ -499,7 +574,12 @@ public class SecureServer {
 
 				valueDecided = normalConsensus(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-				String response = valueDecided + "\n";
+				if(valueDecided.equals(inputValue)){
+					response = "OK";
+				}
+				else{
+					response = "No Decision";
+				}
 
 				String path = null;
 				switch(port.toString()){
@@ -511,11 +591,11 @@ public class SecureServer {
 						break;
 				}
 
-				respondToClient(path, socket, response, port, key, pMS);
+				respondToClient(path, socket, response, port, key, pMS, clientPacket.getPort() - 3);
 
 				System.out.printf("Im a normal server and this was the value agreed: " + valueDecided + "\n");
 
-				bC.addToRound(bC.getInstance(), valueDecided);
+				block.add(op);
 	/* --------------------------------------------------------------------------------------------------------------------------- */
 			}
 
@@ -523,11 +603,16 @@ public class SecureServer {
 			else if (serverType.equals(server_type.B_PC.toString())){
 				valueDecided = byzantineProcessPC(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-				String response = valueDecided + "\n";
+				if(valueDecided.equals(inputValue)){
+					response = "OK";
+				}
+				else{
+					response = "No Decision";
+				}
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMS);
+				respondToClient(keyPathPriv3, socket, response, port, key, pMS, clientPacket.getPort() - 3);
 
-				bC.addToRound(bC.getInstance(), valueDecided);
+				block.add(op);
 
 				System.out.printf("Im byzantine and i got this value " + valueDecided);
 			}
@@ -535,11 +620,16 @@ public class SecureServer {
 			else if (serverType.equals(server_type.B_PP.toString())){
 				valueDecided = byzantineProcessPP(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-				String response = valueDecided + "\n";
+				if(valueDecided.equals(inputValue)){
+					response = "OK";
+				}
+				else{
+					response = "No Decision";
+				}
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMS);
+				respondToClient(keyPathPriv3, socket, response, port, key, pMS, clientPacket.getPort() - 3);
 
-				bC.addToRound(bC.getInstance(), valueDecided);
+				block.add(op);
 
 				System.out.printf("Im byzantine and i got this value " + valueDecided);
 			}
@@ -547,11 +637,16 @@ public class SecureServer {
 			else if (serverType.equals(server_type.B_PC_T.toString())){
 				valueDecided = byzantineProcessPCT(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-				String response = valueDecided + "\n";
+				if(valueDecided.equals(inputValue)){
+					response = "OK";
+				}
+				else{
+					response = "No Decision";
+				}
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMS);
+				respondToClient(keyPathPriv3, socket, response, port, key, pMS, clientPacket.getPort() - 3);
 
-				bC.addToRound(bC.getInstance(), valueDecided);
+				block.add(op);
 
 				System.out.printf("Im byzantine and i got this value " + valueDecided);
 			}

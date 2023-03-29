@@ -114,7 +114,7 @@ public class IBFT_Functions{
 							}
 							// If we reached consensus
 							if(values.get(value).size() >= consensusNumber){
-								System.out.printf("Agrred on value " + value + " for type " + type + "\n");
+								System.out.printf("Agreed on value " + value + " for type " + type + "\n");
 								return value;
 							}
 						}

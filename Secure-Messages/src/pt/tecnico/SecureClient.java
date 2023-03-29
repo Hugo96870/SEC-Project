@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
 import javax.crypto.SecretKey;
+import java.util.Scanner;
 
 public class SecureClient {
 
@@ -26,13 +27,176 @@ public class SecureClient {
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
+	private static final String SPACE = " ";
+
+	private static String myPriv;
+
 	//Key paths
-	final static String keyPathPublic = "keys/serverPub.der";
-	final static String keyPathPublic1 = "keys/serverPub1.der";
-	final static String keyPathPublic2 = "keys/serverPub2.der";
-	final static String keyPathPublic3 = "keys/serverPub3.der";
-	final static String keyPathPriv = "keys/userPriv.der";
-	final static String keyPathSecret = "keys/secret.key";
+	private final static String keyPathPublicServer = "keys/serverPub.der";
+	private final static String keyPathPublicServer1 = "keys/serverPub1.der";
+	private final static String keyPathPublicServer2 = "keys/serverPub2.der";
+	private final static String keyPathPublicServer3 = "keys/serverPub3.der";
+	private final static String keyPathPrivAlice = "keys/userPriv.der";
+	private final static String keyPathPubAlice = "keys/userPub.der";
+	private final static String keyPathPrivBob = "keys/userBobPriv.der";
+	private final static String keyPathPubBob = "keys/userBobPub.der";
+	private final static String keyPathPrivCharlie = "keys/userCharliePriv.der";
+	private final static String keyPathPubCharlie = "keys/userCharliePub.der";
+
+	private static Map<String, String> keyByUser = new HashMap<String, String>(); 
+
+	public static String createRequestMessage(){
+
+		Scanner scanner = new Scanner(System.in);
+		String line = scanner.nextLine().trim();
+		String cmd = line.split(SPACE)[0];
+
+		JsonObject requestJson;
+		String keySource = null, keyDestination = null;
+
+		switch (cmd) {
+			case("CREATE"):
+				String path = keyByUser.get(line.split(SPACE)[1]);
+				byte[] publicKey = auxF.getPublicKey(path);
+
+				try{
+					keySource = new String(publicKey, "UTF-8");
+				} catch(Exception e){
+					System.err.println("Error converting key");
+					System.err.println(e.getMessage());
+				}
+
+				requestJson = JsonParser.parseString("{}").getAsJsonObject();
+				{
+					requestJson.addProperty("type", cmd);
+					requestJson.addProperty("pubKey", keySource);
+				}
+				break;
+			case("TRANSFER"):
+				String pathS = keyByUser.get(line.split(SPACE)[1]);
+				byte[] publicKeyS = auxF.getPublicKey(pathS);
+				String pathD = keyByUser.get(line.split(SPACE)[2]);
+				byte[] publicKeyD = auxF.getPublicKey(pathD);
+
+				try{
+					keySource = new String(publicKeyS, "UTF-8");
+					keyDestination = new String(publicKeyD, "UTF-8");
+				} catch(Exception e){
+					System.err.println("Error converting key");
+					System.err.println(e.getMessage());
+				}
+
+				requestJson = JsonParser.parseString("{}").getAsJsonObject();
+				{
+					requestJson.addProperty("type", cmd);
+					requestJson.addProperty("source", keySource);
+					requestJson.addProperty("dest", keyDestination);
+					requestJson.addProperty("amount", line.split(SPACE)[3]);
+				}
+				break;
+			default:
+				requestJson = null;
+				break;
+		}
+		// Create request message
+
+		String preMasterSecret = "0";
+
+		byte[] secretKeyinByte = auxF.digest(preMasterSecret.getBytes(auxF.UTF_8), "SHA3-256");
+		SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
+
+		String clientData = null;
+		try{
+			clientData = auxF.do_Encryption(requestJson.toString(), key);
+		}
+		catch (Exception e){
+			System.err.printf("AES encryption failed\n");
+			System.err.println(e.getMessage());
+		}
+
+		String pMSEncrypted = null;
+		try{
+			pMSEncrypted = auxF.do_RSAEncryption(preMasterSecret, myPriv);
+		}
+		catch (Exception e){
+			System.err.printf("RSA encryption failed\n");
+			System.err.println(e.getMessage());
+		}
+
+		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			message.addProperty("payload", clientData);
+			message.addProperty("PMS", pMSEncrypted);
+		}
+
+		String dataToSend = null;
+		try{
+			dataToSend = auxF.ConvertToSend(message.toString());
+		}
+		catch (Exception e){
+			System.err.printf("Error parsing message\n");
+			System.err.println(e.getMessage());
+		}
+
+		scanner.close();
+
+		return dataToSend;
+	}
+	
+	public static String parseReceivedMessage(DatagramPacket serverPacket, String path){
+
+		String clientText = null;
+		try{
+			clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(serverPacket.getData()), serverPacket.getLength());
+		}catch (Exception e){
+			System.err.println("Error parsing");
+			System.err.println(e.getMessage());
+		}
+
+		//Parse Json with payload and hmac
+		JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+		String receivedFromJson = null, pMS = null;
+		{
+			receivedFromJson = received.get("payload").getAsString();
+			pMS = received.get("PMS").getAsString();
+		}
+
+		String pMSDecrypted = null;
+		try{
+			pMSDecrypted = auxF.do_RSADecryption(pMS, path);
+		}catch (Exception e){
+			System.err.println("Error in assymetric decryption");
+			System.err.println(e.getMessage());
+		}
+
+		byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
+		SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
+
+		try{
+			receivedFromJson = auxF.do_Decryption(receivedFromJson, key, Base64.getDecoder().decode(receivedFromJson).length);
+		}catch (Exception e){
+			System.err.println("Error in symetric decryption");
+			System.err.println(e.getMessage());
+		}
+
+		// Parse JSON and extract arguments
+		JsonObject requestJson = null;
+		try{
+			requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+		} catch (Exception e){
+			System.err.println("Failed to parse Json received");
+			System.err.println(e.getMessage());
+		}
+
+		// Parse JSON and extract arguments
+		String body = null;
+		{
+			body = requestJson.get("body").getAsString();
+		}
+
+		return body;
+
+	}
 
 	public static String clientWaitForQuorum(Integer consensusNumber, DatagramSocket socket){
 		Map<String, List<Integer>> receivedResponses = new HashMap<String, List<Integer>>();
@@ -51,68 +215,21 @@ public class SecureClient {
 				String path = null;
 				switch(((Integer)serverPacket.getPort()).toString()){
 					case "12000":
-						path = keyPathPublic;
+						path = keyPathPublicServer;
 						break;
 					case "12001":
-						path = keyPathPublic1;
+						path = keyPathPublicServer1;
 						break;
 					case "12002":
-						path = keyPathPublic2;
+						path = keyPathPublicServer2;
 						break;
 					case "12003":
-						path = keyPathPublic3;
+						path = keyPathPublicServer3;
 						break;
 				}
 
-				String clientText = null;
-				try{
-					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(serverPacket.getData()), serverPacket.getLength());
-				}catch (Exception e){
-					System.err.println("Error parsing");
-					System.err.println(e.getMessage());
-				}
+				String body = parseReceivedMessage(serverPacket, path);
 
-				//Parse Json with payload and hmac
-				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
-				String receivedFromJson = null, pMS = null;
-				{
-					receivedFromJson = received.get("payload").getAsString();
-					pMS = received.get("PMS").getAsString();
-				}
-
-				String pMSDecrypted = null;
-				try{
-					pMSDecrypted = auxF.do_RSADecryption(pMS, path);
-				}catch (Exception e){
-					System.err.println("Error in assymetric decryption");
-					System.err.println(e.getMessage());
-				}
-
-				byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
-				SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
-
-				try{
-					receivedFromJson = auxF.do_Decryption(receivedFromJson, key, 32);
-				}catch (Exception e){
-					System.err.println("Error in symetric decryption");
-					System.err.println(e.getMessage());
-				}
-
-				// Parse JSON and extract arguments
-				JsonObject requestJson = null;
-				try{
-					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
-				} catch (Exception e){
-					System.err.println("Failed to parse Json received");
-					System.err.println(e.getMessage());
-				}
-
-				// Parse JSON and extract arguments
-				String body = null;
-				{
-					body = requestJson.get("body").getAsString();
-				}
-			
 				// Add to list of received
 				if (receivedResponses.get(body) != null){
 					if(!receivedResponses.get(body).contains(serverPacket.getPort())){
@@ -137,7 +254,7 @@ public class SecureClient {
 
 	public static void main(String[] args) throws IOException {
 		// Check arguments
-		if (args.length < 3) {
+		if (args.length < 4) {
 			System.err.println("Argument(s) missing!");
 			System.err.printf("Usage: java %s host port%n", SecureClient.class.getName());
 			System.exit(1);
@@ -145,62 +262,37 @@ public class SecureClient {
 
 		final String serverHost = args[0];
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
-		final String sentence = args[1];
-		final Integer nrServers = Integer.parseInt(args[2]);
+		final Integer nrServers = Integer.parseInt(args[1]);
+		final String id = args[2];
+		final Integer port = Integer.parseInt(args[3]);
+
+		switch(id){
+			case "Alice":
+				myPriv = keyPathPrivAlice;
+				break;
+			case "Bob":
+				myPriv = keyPathPrivBob;
+				break;
+			case "Charlie":
+				myPriv = keyPathPrivCharlie;
+				break;
+		}
 
 		List<Integer> serverPorts = new ArrayList<Integer>(nrServers);
-
+		Integer consensusNumber = (nrServers + (nrServers-1)/3)/2 + 1;
 		for(int i = 0; i < nrServers; i++){
 			serverPorts.add(8000 + i);
 		}
 
+		//Populate ID and Paths Map
+		keyByUser.put("Alice", keyPathPubAlice);
+		keyByUser.put("Bob", keyPathPubBob);
+		keyByUser.put("Charlie", keyPathPubCharlie);
+
 		// Create socket
-		DatagramSocket socket = new DatagramSocket(10000);
+		DatagramSocket socket = new DatagramSocket(port);
 
-        // Create request message
-		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
-		{
-			String bodyText = sentence;
-			requestJson.addProperty("body", bodyText);
-		}
-
-		String preMasterSecret = "0";
-
-		byte[] secretKeyinByte = auxF.digest(preMasterSecret.getBytes(auxF.UTF_8), "SHA3-256");
-		SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
-
-		String clientData = null;
-		try{
-			clientData = auxF.do_Encryption(requestJson.toString(), key);
-		}
-		catch (Exception e){
-			System.err.printf("AES encryption failed\n");
-			System.err.println(e.getMessage());
-		}
-
-		String pMSEncrypted = null;
-		try{
-			pMSEncrypted = auxF.do_RSAEncryption(preMasterSecret, keyPathPriv);
-		}
-		catch (Exception e){
-			System.err.printf("RSA encryption failed\n");
-			System.err.println(e.getMessage());
-		}
-
-		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
-		{
-			message.addProperty("payload", clientData);
-			message.addProperty("PMS", pMSEncrypted);
-		}
-
-		String dataToSend = null;
-		try{
-			dataToSend = auxF.ConvertToSend(message.toString());
-		}
-		catch (Exception e){
-			System.err.printf("Error parsing message\n");
-			System.err.println(e.getMessage());
-		}
+		String dataToSend = createRequestMessage();
 
 		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
 		List<sendAndReceiveAck> myThreads = new ArrayList<>();
@@ -212,7 +304,7 @@ public class SecureClient {
 			DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(dataToSend),
 					Base64.getDecoder().decode(dataToSend).length, serverAddress, serverPorts.get(i) + 3000);
 
-			myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, 0));
+			myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, port + 3));
 		}
 
 		try{
@@ -225,18 +317,14 @@ public class SecureClient {
 			System.err.println(e.getMessage());
 		}
 
-		Integer consensusNumber = (nrServers + (nrServers-1)/3)/2 + 1;
-
 		String body = clientWaitForQuorum(consensusNumber, socket);
 
 		// Close socket
 		socket.close();
 
-		System.out.printf(body);
+		System.out.printf(body + "\n");
 
-		String finalValue = body.substring(0, body.length() - 1);
-
-		if(!sentence.equals(finalValue)){
+		if(!body.equals("OK")){
 			System.out.println("Vou sair com 1");
 			System.exit(1);
 		}

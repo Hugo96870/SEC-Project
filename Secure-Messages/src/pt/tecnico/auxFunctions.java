@@ -15,6 +15,8 @@ import com.google.gson.JsonObject;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import javax.crypto.SecretKey;
+
+import java.io.File;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import com.google.gson.JsonParser;
@@ -186,5 +188,36 @@ public class auxFunctions {
 		}
 		return false;
 	}
+
+    public byte[] getPublicKey(String path){
+        
+        File file = new File(path);
+        PublicKey publicKey = null;
+        try{
+            byte[] keyBytes = Files.readAllBytes(file.toPath());
+            X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            publicKey = kf.generatePublic(spec);
+        } catch (Exception e){
+            System.err.println("Cant load key");
+            System.err.println(e.getMessage());
+        }
+
+        return publicKey.getEncoded();
+    }
+
+    public PublicKey convertByteIntoPK(byte[] key){
+        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(key);
+        PublicKey publicKey = null;
+        try{
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA"); // or your preferred algorithm
+            publicKey = keyFactory.generatePublic(publicKeySpec);
+        } catch(Exception e){
+            System.err.println("Convertion error");
+            System.err.println(e.getMessage());
+        }
+
+        return publicKey;
+    }
 
 }
