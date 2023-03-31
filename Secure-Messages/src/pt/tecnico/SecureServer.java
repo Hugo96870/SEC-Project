@@ -37,10 +37,6 @@ public class SecureServer {
 	private static final String keyPathPriv1 = "keys/serverPriv1.der";
 	private static final String keyPathPriv2 = "keys/serverPriv2.der";
 	private static final String keyPathPriv3 = "keys/serverPriv3.der";
-	final static String keyPathSecret = "keys/secret.key";
-
-	private static SecretKey key;
-	private static String pMS;
 
 	public static operation parseInput(DatagramPacket clientPacket, String pathToKey){
 	
@@ -54,30 +50,22 @@ public class SecureServer {
 
 		//Parse Json with payload and hmac
 		JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
-		String receivedFromJson = null, preMS = null;
+		String receivedFromJson = null, signatureEncrypted = null;
 		{
 			receivedFromJson = received.get("payload").getAsString();
-			preMS = received.get("PMS").getAsString();
+			signatureEncrypted = received.get("signature").getAsString();
 		}
 
-		String pMSDecrypted = null;
 		try{
-			pMSDecrypted = auxF.do_RSADecryption(preMS, pathToKey);
+			String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, pathToKey);
+			byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
+			String hashString = new String(payloadHash, "UTF-8");
+			hashString.equals(signatureReceived);
+
 		}catch (Exception e){
 			System.err.println("Error in assymetric decryption");
 			System.err.println(e.getMessage());
-		}
-
-		pMS = pMSDecrypted;
-
-		byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
-		key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
-
-		try{
-			receivedFromJson = auxF.do_Decryption(receivedFromJson, key, Base64.getDecoder().decode(receivedFromJson).length);
-		}catch (Exception e){
-			System.err.println("Error in symetric decryption");
-			System.err.println(e.getMessage());
+			System.exit(1);
 		}
 
 		// Parse JSON and extract arguments
@@ -286,7 +274,7 @@ public class SecureServer {
 
 	//Sends encrypted message to client confirming the string appended
 	public static void respondToClient(String keyPathPriv,
-									DatagramSocket socket, String valueToSend, Integer port, SecretKey key, String pms, int clientPort){
+									DatagramSocket socket, String valueToSend, Integer port, int clientPort){
 		/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 
 		// Create response message
@@ -295,18 +283,10 @@ public class SecureServer {
 			responseJson.addProperty("body", valueToSend);
 		}
 
-		String clientData = null;
+		String signatureEncrypted = null;
 		try{
-			clientData = auxF.do_Encryption(responseJson.toString(), key);
-		}
-		catch (Exception e){
-			System.err.printf("AES encryption failed\n");
-			System.err.println(e.getMessage());
-		}
-
-		String pMSEncrypted = null;
-		try{
-			pMSEncrypted = auxF.do_RSAEncryption(pms, keyPathPriv);
+			signatureEncrypted = auxF.do_RSAEncryption(auxF.digest(responseJson.toString().getBytes(auxF.UTF_8),
+									"SHA3-256").toString(), keyPathPriv);
 		}
 		catch (Exception e){
 			System.err.printf("RSA encryption failed\n");
@@ -315,8 +295,8 @@ public class SecureServer {
 
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			message.addProperty("payload", clientData);
-			message.addProperty("PMS", pMSEncrypted);
+			message.addProperty("payload", responseJson.toString());
+			message.addProperty("signature", signatureEncrypted);
 		}
 
 		String dataToSend = null;
@@ -564,7 +544,7 @@ public class SecureServer {
 
 				System.out.println("Going to respond to client");
 
-				respondToClient(keyPathPriv, socket, response, port, key, pMS, clientPacket.getPort() - 3);
+				respondToClient(keyPathPriv, socket, response, port, clientPacket.getPort() - 3);
 
 				block.add(op);
 			}
@@ -591,7 +571,7 @@ public class SecureServer {
 						break;
 				}
 
-				respondToClient(path, socket, response, port, key, pMS, clientPacket.getPort() - 3);
+				respondToClient(path, socket, response, port, clientPacket.getPort() - 3);
 
 				System.out.printf("Im a normal server and this was the value agreed: " + valueDecided + "\n");
 
@@ -610,7 +590,7 @@ public class SecureServer {
 					response = "No Decision";
 				}
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMS, clientPacket.getPort() - 3);
+				respondToClient(keyPathPriv3, socket, response, port, clientPacket.getPort() - 3);
 
 				block.add(op);
 
@@ -627,7 +607,7 @@ public class SecureServer {
 					response = "No Decision";
 				}
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMS, clientPacket.getPort() - 3);
+				respondToClient(keyPathPriv3, socket, response, port, clientPacket.getPort() - 3);
 
 				block.add(op);
 
@@ -644,7 +624,7 @@ public class SecureServer {
 					response = "No Decision";
 				}
 
-				respondToClient(keyPathPriv3, socket, response, port, key, pMS, clientPacket.getPort() - 3);
+				respondToClient(keyPathPriv3, socket, response, port, clientPacket.getPort() - 3);
 
 				block.add(op);
 

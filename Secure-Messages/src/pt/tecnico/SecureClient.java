@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
-import javax.crypto.SecretKey;
 import java.util.Scanner;
 
 public class SecureClient {
@@ -100,23 +99,9 @@ public class SecureClient {
 		}
 		// Create request message
 
-		String preMasterSecret = "0";
-
-		byte[] secretKeyinByte = auxF.digest(preMasterSecret.getBytes(auxF.UTF_8), "SHA3-256");
-		SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
-
-		String clientData = null;
+		String signature = null;
 		try{
-			clientData = auxF.do_Encryption(requestJson.toString(), key);
-		}
-		catch (Exception e){
-			System.err.printf("AES encryption failed\n");
-			System.err.println(e.getMessage());
-		}
-
-		String pMSEncrypted = null;
-		try{
-			pMSEncrypted = auxF.do_RSAEncryption(preMasterSecret, myPriv);
+			signature = auxF.do_RSAEncryption(auxF.digest(requestJson.toString().getBytes(auxF.UTF_8), "SHA3-256").toString(), myPriv);
 		}
 		catch (Exception e){
 			System.err.printf("RSA encryption failed\n");
@@ -125,8 +110,8 @@ public class SecureClient {
 
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			message.addProperty("payload", clientData);
-			message.addProperty("PMS", pMSEncrypted);
+			message.addProperty("payload", requestJson.toString());
+			message.addProperty("signature", signature);
 		}
 
 		String dataToSend = null;
@@ -155,28 +140,21 @@ public class SecureClient {
 
 		//Parse Json with payload and hmac
 		JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
-		String receivedFromJson = null, pMS = null;
+		String receivedFromJson = null, signatureEncrypted = null;
 		{
 			receivedFromJson = received.get("payload").getAsString();
-			pMS = received.get("PMS").getAsString();
+			signatureEncrypted = received.get("signature").getAsString();
 		}
 
-		String pMSDecrypted = null;
 		try{
-			pMSDecrypted = auxF.do_RSADecryption(pMS, path);
+			String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, path);
+			byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
+			String hashString = new String(payloadHash, "UTF-8");
+			hashString.equals(signatureReceived);
 		}catch (Exception e){
 			System.err.println("Error in assymetric decryption");
 			System.err.println(e.getMessage());
-		}
-
-		byte[] secretKeyinByte = auxF.digest(pMSDecrypted.getBytes(auxF.UTF_8), "SHA3-256");
-		SecretKey key = new SecretKeySpec(secretKeyinByte, 0, secretKeyinByte.length, "AES");
-
-		try{
-			receivedFromJson = auxF.do_Decryption(receivedFromJson, key, Base64.getDecoder().decode(receivedFromJson).length);
-		}catch (Exception e){
-			System.err.println("Error in symetric decryption");
-			System.err.println(e.getMessage());
+			System.exit(1);
 		}
 
 		// Parse JSON and extract arguments
@@ -279,7 +257,7 @@ public class SecureClient {
 		}
 
 		List<Integer> serverPorts = new ArrayList<Integer>(nrServers);
-		Integer consensusNumber = (nrServers + (nrServers-1)/3)/2 + 1;
+		Integer consensusNumber = (nrServers-1)/3 + 1;
 		for(int i = 0; i < nrServers; i++){
 			serverPorts.add(8000 + i);
 		}
