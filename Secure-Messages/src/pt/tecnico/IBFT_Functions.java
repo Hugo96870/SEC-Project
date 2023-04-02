@@ -2,16 +2,18 @@ package pt.tecnico;
 
 import java.net.*;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.Iterator;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
-
 
 public class IBFT_Functions{
 
@@ -39,16 +41,38 @@ public class IBFT_Functions{
 
 	public message_type mT;
 
-	public String waitForQuorum(Map<String, List<Integer>> values, Integer consensusNumber,
-						message_type type, DatagramSocket socket, Integer instanceNumber){
+	public List<operation> convertJsonToOp(List<JsonObject> ops){
+
+		List<operation> value = new ArrayList<operation>();
+
+		for(int j = 0; j < ops.size(); j++){
+			if(ops.get(j).get("type").getAsString().equals("CREATE")){
+				operation operation = new operation(ops.get(j).get("type").getAsString(),
+				auxF.convertStrToPK(ops.get(j).get("source").getAsString()));
+				value.add(operation);
+			}
+			else if(ops.get(j).get("type").getAsString().equals("TRANSFER")){
+				operation operation = new operation(ops.get(j).get("type").getAsString(),
+				auxF.convertStrToPK(ops.get(j).get("source").getAsString()),
+				auxF.convertStrToPK(ops.get(j).get("dest").getAsString()), 
+							Integer.parseInt(ops.get(j).get("amount").getAsString()));
+				value.add(operation);
+			}
+		}
+
+		return value;
+	}
+
+	public List<operation> waitForQuorum(Map<List<operation>, List<Integer>> values, Integer consensusNumber,
+						message_type type, DatagramSocket socket, Integer instanceNumber, blockChain bC){
 
 		//Cycle waitin for quorum
-		String messageType = null, instance = null, value = null, idMainProcess = null;
+		String messageType = null, instance = null, idMainProcess = null;
 		while(true){
 			DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
 			System.out.printf("Waiting for this request " + type + "\n");
+			List<operation> value = null;
 			try{
-
 				socket.receive(messageFromServer);
 
 				String clientText = null;
@@ -85,12 +109,24 @@ public class IBFT_Functions{
 				}
 				else{
 					try{
+						List<JsonObject> ops = new ArrayList<JsonObject>(bC.getBlockSize());
 						{
 							messageType = requestJson.get("messageType").getAsString();
 							instance = requestJson.get("instance").getAsString();
-							value = requestJson.get("value").getAsString();
 							idMainProcess = requestJson.get("idMainProcess").getAsString();
 						}
+
+						for(int j = 0; j < bC.getBlockSize(); j++){
+							ops.add(requestJson.getAsJsonObject("op" + j));
+						}
+
+						if(ops.get(0) == null){
+							value = new ArrayList<operation>();
+						}
+						else{
+							value = convertJsonToOp(ops);
+						}
+
 					} catch (Exception e){
 						System.err.println("Failed to extract arguments from Json payload");
 						System.err.println(e.getMessage());
@@ -98,29 +134,51 @@ public class IBFT_Functions{
 
 					auxF.sendAck(socket, messageFromServer);
 
+					for(int k = 0; k < values.size(); k++){
+						for(int j = 0; j < bC.getBlockSize(); j++){
+						}
+					}
+
+					System.out.println(8000 + Integer.parseInt(idMainProcess));
+
 					// If consensus instance is expected
 					if(Integer.parseInt(instance) == instanceNumber){
 						// If we receive message type expected
+						List<operation> entry = null; 	//entry = key in which we added another vote
 						if (messageType.equals(type.toString())){
 							// Add to list of received
-							if (values.get(value) != null){
-								if(!values.get(value).contains(8000 + Integer.parseInt(idMainProcess))){
-									values.get(value).add(8000 + Integer.parseInt(idMainProcess));
+							for (List<operation> key : values.keySet()) {
+								System.out.println(values.get(key));
+								Integer counterValidEntries = 0;
+								for(int j = 0; j < value.size(); j++){
+									for(int k = 0; k < key.size(); k++){
+										if(key.get(k).equals(value.get(j))){
+											counterValidEntries++;
+											if(counterValidEntries.equals(value.size())){
+												if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess)))
+													values.get(key).add(8000 + Integer.parseInt(idMainProcess));
+												entry = key;
+											}
+											break;
+										}
+									}
 								}
 							}
-							else{
+							//if vote didnt match any existing key
+							if(entry == null){
 								values.put(value, new ArrayList<Integer>());
 								values.get(value).add(8000 + Integer.parseInt(idMainProcess));
+								entry = value;
 							}
+
 							// If we reached consensus
-							if(values.get(value).size() >= consensusNumber){
+							if(values.get(entry).size() >= consensusNumber){
 								System.out.printf("Agreed on value " + value + " for type " + type + "\n");
 								return value;
 							}
 						}
 					}
 				}
-
 			}catch(Exception e){
 				System.err.println("Failed in message");
 				System.err.println(e.getMessage());
@@ -128,7 +186,7 @@ public class IBFT_Functions{
 		}
 	}
 
-	public void sendMessageToAll(message_type type, String valueToSend, List<Integer> serverPorts,
+	public void sendMessageToAll(message_type type, List<operation> valueToSend, List<Integer> serverPorts,
 						Integer port, DatagramSocket socket, Integer consensusNumber, Integer instanceNumber){
 
 		InetAddress serverToSend = null;
@@ -160,14 +218,26 @@ public class IBFT_Functions{
 					{
 						message.addProperty("messageType", type.name());
 						message.addProperty("instance", instanceNumber.toString());
-						message.addProperty("value", valueToSend);
 						message.addProperty("idMainProcess", ((Integer)(port % basePort)).toString());
 					}
+					for(int j = 0; j < valueToSend.size(); j++){
+						JsonObject jsonObject = new JsonObject();
+						jsonObject.addProperty("type", valueToSend.get(j).getID().toString());
+						if(valueToSend.get(j).getID().toString().equals("CREATE")){
+							jsonObject.addProperty("source", Base64.getEncoder().encodeToString(valueToSend.get(j).getSource().getEncoded()));
+						}
+						else if(valueToSend.get(j).getID().toString().equals("TRANSFER")){
+							jsonObject.addProperty("amount", valueToSend.get(j).getAmount().toString());
+							jsonObject.addProperty("source", Base64.getEncoder().encodeToString(valueToSend.get(j).getSource().getEncoded()));
+							jsonObject.addProperty("dest", Base64.getEncoder().encodeToString(valueToSend.get(j).getDestination().getEncoded()));
+						}
+						message.add("op" + j, jsonObject);
+					}
+
 				} catch (Exception e){
-					System.err.println("Failed to parse Json and arguments");
+					System.err.println("Failed to create Json and arguments");
 					System.err.println(e.getMessage());
 				}
-			
 
 				//Create hmac to assure integrity
 				byte[] hmac = null;
@@ -219,5 +289,4 @@ public class IBFT_Functions{
 			System.err.println(e.getMessage());
 		}
 	}
-
 }

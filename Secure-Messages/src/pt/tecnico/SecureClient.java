@@ -1,11 +1,12 @@
 package pt.tecnico;
 
 import java.net.*;
-import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.security.PublicKey;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.concurrent.ExecutorService;
@@ -19,22 +20,15 @@ import java.util.Scanner;
 
 public class SecureClient {
 
-	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
-
 	private static auxFunctions auxF = new auxFunctions();
 
 	/** Buffer size for receiving a UDP packet. */
-	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
 	private static final String SPACE = " ";
 
 	private static String myPriv;
 
 	//Key paths
-	private final static String keyPathPublicServer = "keys/serverPub.der";
-	private final static String keyPathPublicServer1 = "keys/serverPub1.der";
-	private final static String keyPathPublicServer2 = "keys/serverPub2.der";
-	private final static String keyPathPublicServer3 = "keys/serverPub3.der";
 	private final static String keyPathPrivAlice = "keys/userPriv.der";
 	private final static String keyPathPubAlice = "keys/userPub.der";
 	private final static String keyPathPrivBob = "keys/userBobPriv.der";
@@ -43,23 +37,26 @@ public class SecureClient {
 	private final static String keyPathPubCharlie = "keys/userCharliePub.der";
 
 	private static Map<String, String> keyByUser = new HashMap<String, String>(); 
+	private static Scanner scanner = new Scanner(System.in);
 
 	public static String createRequestMessage(){
 
-		Scanner scanner = new Scanner(System.in);
-		String line = scanner.nextLine().trim();
+		System.out.print("> ");
+		while (!scanner.hasNextLine()) {
+			// wait for input
+		}
+		String line = scanner.nextLine();
 		String cmd = line.split(SPACE)[0];
-
 		JsonObject requestJson;
 		String keySource = null, keyDestination = null;
 
 		switch (cmd) {
 			case("CREATE"):
 				String path = keyByUser.get(line.split(SPACE)[1]);
-				byte[] publicKey = auxF.getPublicKey(path);
+				PublicKey publicKey = auxF.getPublicKey(path);
 
 				try{
-					keySource = new String(publicKey, "UTF-8");
+					keySource = Base64.getEncoder().encodeToString(publicKey.getEncoded());
 				} catch(Exception e){
 					System.err.println("Error converting key");
 					System.err.println(e.getMessage());
@@ -70,16 +67,17 @@ public class SecureClient {
 					requestJson.addProperty("type", cmd);
 					requestJson.addProperty("pubKey", keySource);
 				}
+
 				break;
 			case("TRANSFER"):
 				String pathS = keyByUser.get(line.split(SPACE)[1]);
-				byte[] publicKeyS = auxF.getPublicKey(pathS);
+				PublicKey publicKeyS = auxF.getPublicKey(pathS);
 				String pathD = keyByUser.get(line.split(SPACE)[2]);
-				byte[] publicKeyD = auxF.getPublicKey(pathD);
+				PublicKey publicKeyD = auxF.getPublicKey(pathD);
 
 				try{
-					keySource = new String(publicKeyS, "UTF-8");
-					keyDestination = new String(publicKeyD, "UTF-8");
+					keySource = Base64.getEncoder().encodeToString(publicKeyS.getEncoded());
+					keyDestination = Base64.getEncoder().encodeToString(publicKeyD.getEncoded());
 				} catch(Exception e){
 					System.err.println("Error converting key");
 					System.err.println(e.getMessage());
@@ -122,8 +120,6 @@ public class SecureClient {
 			System.err.printf("Error parsing message\n");
 			System.err.println(e.getMessage());
 		}
-
-		scanner.close();
 
 		return dataToSend;
 	}
@@ -176,60 +172,6 @@ public class SecureClient {
 
 	}
 
-	public static String clientWaitForQuorum(Integer consensusNumber, DatagramSocket socket){
-		Map<String, List<Integer>> receivedResponses = new HashMap<String, List<Integer>>();
-
-		//Cycle waitin for quorum
-		while(true){
-			byte[] serverData = new byte[BUFFER_SIZE];
-			DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length);
-			System.out.printf("Wait for quorum of responses\n");
-			try{
-				// Receive response
-				socket.receive(serverPacket);
-
-				auxF.sendAck(socket, serverPacket);
-
-				String path = null;
-				switch(((Integer)serverPacket.getPort()).toString()){
-					case "12000":
-						path = keyPathPublicServer;
-						break;
-					case "12001":
-						path = keyPathPublicServer1;
-						break;
-					case "12002":
-						path = keyPathPublicServer2;
-						break;
-					case "12003":
-						path = keyPathPublicServer3;
-						break;
-				}
-
-				String body = parseReceivedMessage(serverPacket, path);
-
-				// Add to list of received
-				if (receivedResponses.get(body) != null){
-					if(!receivedResponses.get(body).contains(serverPacket.getPort())){
-						receivedResponses.get(body).add(serverPacket.getPort());
-					}
-				}
-				else{
-					receivedResponses.put(body, new ArrayList<Integer>());
-					receivedResponses.get(body).add(serverPacket.getPort());
-				}
-				// If we reached consensus
-				if(receivedResponses.get(body).size() >= consensusNumber){
-					return body;
-				}
-
-			}catch(Exception e){
-				System.err.println("Failed in message");
-				System.err.println(e.getMessage());
-			}
-		}
-	}
-
 	public static void main(String[] args) throws IOException {
 		// Check arguments
 		if (args.length < 4) {
@@ -267,48 +209,37 @@ public class SecureClient {
 		keyByUser.put("Bob", keyPathPubBob);
 		keyByUser.put("Charlie", keyPathPubCharlie);
 
-		// Create socket
-		DatagramSocket socket = new DatagramSocket(port);
+		while(true){
 
-		String dataToSend = createRequestMessage();
+			String dataToSend = createRequestMessage();
 
-		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
-		List<sendAndReceiveAck> myThreads = new ArrayList<>();
-		List<Future<Integer>> future = new ArrayList<>();
+			ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
+			List<sendAndReceiveAck> myThreads = new ArrayList<>();
+			List<Future<Integer>> future = new ArrayList<>();
 
-		for(int i = 0; i < nrServers; i++){
-			//SendMessagetoAll
+			for(int i = 0; i < nrServers; i++){
+				//SendMessagetoAll
 
-			DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(dataToSend),
-					Base64.getDecoder().decode(dataToSend).length, serverAddress, serverPorts.get(i) + 3000);
+				DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(dataToSend),
+						Base64.getDecoder().decode(dataToSend).length, serverAddress, serverPorts.get(i) + 3000);
 
-			myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, port + 3));
-		}
-
-		try{
-			for(int i = 0; i < serverPorts.size(); i++){
-				future.add(executorService.submit(myThreads.get(i)));
-				future.get(i).get();
+				myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, port + 3));
 			}
-		}catch(Exception e){
-			System.err.println("Error launching threads");
-			System.err.println(e.getMessage());
-		}
 
-		String body = clientWaitForQuorum(consensusNumber, socket);
+			try{
+				for(int i = 0; i < serverPorts.size(); i++){
+					future.add(executorService.submit(myThreads.get(i)));
+					future.get(i).get();
+				}
+			}catch(Exception e){
+				System.err.println("Error launching threads");
+				System.err.println(e.getMessage());
+			}
 
-		// Close socket
-		socket.close();
+			ExecutorService executorServiceReceive = Executors.newSingleThreadExecutor();
+			//PROBLEMA NO PORT DE RECEBER A MAIORIA
+			executorServiceReceive.submit(new clientWaitResponse(port + 6, auxF, consensusNumber));
 
-		System.out.printf(body + "\n");
-
-		if(!body.equals("OK")){
-			System.out.println("Vou sair com 1");
-			System.exit(1);
-		}
-		else{
-			System.out.println("Vou sair com 0");
-			System.exit(0);
 		}
 	}
 }

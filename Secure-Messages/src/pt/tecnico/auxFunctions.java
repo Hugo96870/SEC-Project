@@ -189,7 +189,7 @@ public class auxFunctions {
 		return false;
 	}
 
-    public byte[] getPublicKey(String path){
+    public PublicKey getPublicKey(String path){
         
         File file = new File(path);
         PublicKey publicKey = null;
@@ -203,14 +203,16 @@ public class auxFunctions {
             System.err.println(e.getMessage());
         }
 
-        return publicKey.getEncoded();
+        return publicKey;
     }
 
-    public PublicKey convertByteIntoPK(byte[] key){
-        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(key);
+    public PublicKey convertStrToPK(String key){
+
+        byte[] keyByte = Base64.getDecoder().decode(key);
+        X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(keyByte);
         PublicKey publicKey = null;
         try{
-            KeyFactory keyFactory = KeyFactory.getInstance("RSA"); // or your preferred algorithm
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
             publicKey = keyFactory.generatePublic(publicKeySpec);
         } catch(Exception e){
             System.err.println("Convertion error");

@@ -2,6 +2,8 @@ package pt.tecnico;
 
 import java.security.PublicKey;
 
+import pt.tecnico.IBFT_Functions.message_type;
+
 public class operation{
 
     enum operation_type{
@@ -50,6 +52,16 @@ public class operation{
         }
         else{
             return this.identifier.toString() + " " + this.source.toString() + " " + this.destination.toString() + " " + this.amount.toString();
+        }
+    }
+
+    public boolean equals(operation op){
+        if(op.getID().equals(operation_type.CREATE)){
+            return this.identifier.toString().equals(op.identifier.toString()) && this.source.equals(op.source);
+        }
+        else{
+            return this.identifier.toString().equals(op.identifier.toString()) && this.amount.equals(op.amount) &&
+                this.source.equals(op.source) && this.destination.equals(op.destination);
         }
     }
 
