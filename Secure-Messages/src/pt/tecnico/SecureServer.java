@@ -5,10 +5,8 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.security.PublicKey;
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.google.gson.reflect.TypeToken;
 import pt.tecnico.IBFT_Functions.message_type;
 import pt.tecnico.blockChain.server_type;
 import java.util.Base64;
@@ -79,9 +77,10 @@ public class SecureServer {
 
 		// Parse JSON and extract arguments
 		requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
-		String type = null;
+		String type = null, port = null;
 		{
 			type = requestJson.get("type").getAsString();
+			port = requestJson.get("port").getAsString();
 		}
 		operation op = null;
 		PublicKey keySource = null, keyDestination = null;
@@ -100,7 +99,7 @@ public class SecureServer {
 					System.err.println(e.getMessage());
 				}
 
-				op = new operation("CREATE", keySource);
+				op = new operation("CREATE", keySource, Integer.parseInt(port));
 				break;
 			case("TRANSFER"):
 				String source = null, dest = null, amount = null;
@@ -118,7 +117,7 @@ public class SecureServer {
 					System.err.println(e.getMessage());
 				}
 
-				op = new operation("TRANSFER", keySource, keyDestination, Integer.parseInt(amount));
+				op = new operation("TRANSFER", keySource, keyDestination, Integer.parseInt(amount), Integer.parseInt(port));
 				break;
 			default:
 				break;
@@ -228,7 +227,10 @@ public class SecureServer {
 		//wait for commit quorum
 		List<operation> valueDecided = ibft_f.waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket, bC.getInstance(), bC);
 
-		if(!valueAgreed.equals(valueDecided)){
+		System.out.println("Already decidded");
+
+		if(!ibft_f.compareLists(valueAgreed, valueDecided)){
+			System.out.println("Values prepare and commit not equal");
 			return null;
 		}
 
@@ -266,7 +268,10 @@ public class SecureServer {
 		//wait for commit quorum
 		List<operation> valueDecided = ibft_f.waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket, bC.getInstance(), bC);
 
-		if(!valueAgreed.equals(valueDecided)){
+		System.out.println("Already decidded");
+
+		if(!ibft_f.compareLists(valueAgreed, valueDecided)){
+			System.out.println("Values prepare and commit not equal");
 			return null;
 		}
 
@@ -320,19 +325,15 @@ public class SecureServer {
 
 		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(dataToSend),
 						Base64.getDecoder().decode(dataToSend).length, hostToSend, clientPort);
+
+		System.out.println("Going to send response to " + clientPort);
 		
 		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, clientPort, port + 4000);
 
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 
-		Future<Integer> future = executor.submit(callable);
+		executor.submit(callable);
 
-		try{
-			future.get();
-		} catch (Exception e){
-			System.err.println("Failed to wait for thread");
-			System.err.println(e.getMessage());
-		}
 		System.out.printf("Response packet sent to %s:%d! and received ack \n", hostToSend, clientPort);
 
 	}
@@ -535,32 +536,33 @@ public class SecureServer {
 					valueDecided = leaderConsensus(socket, bC.getConsensusMajority(), block, bC.getPorts(), port, bC);
 
 	/* --------------------------------------------------------------------------------------------------------------------------- */
-					for(int i = 0; i < block.size(); i++){
-						if(block.get(i).equals(valueDecided.get(i))){
-							response = "OK";
-						}
-						else{
-							response = "No Decision";
-							break;
-						}
+					if(ibft_f.compareLists(block, valueDecided)){
+						response = "OK";
 					}
+					else{
+						response = "No Decision";
+						break;
+					}
+
 					if(response.equals("OK")){
 						System.out.println("All good");
 						operations = bC.executeBlock(block);
 						for (operation opera: operations){
-							System.out.println(opera.toString());
+							System.out.println(opera.getID());
 						}
-						block.clear();
 						response = "OK";
 					}
 					else{
-						block.clear();
 						response = "No Decision";
 					}
 
-					System.out.println("Going to respond to client");
+					System.out.println("Going to respond to client with " + response);
 
-					respondToClient(keyPathPriv, socket, response, port, clientPacket.getPort() + 3);
+					for(operation opera: block){
+						respondToClient(keyPathPriv, socket, response, port, opera.getPort());
+					}
+
+					block.clear();
 
 				}
 				else if (serverType.equals(server_type.NORMAL.toString())){
@@ -569,26 +571,23 @@ public class SecureServer {
 
 					valueDecided = normalConsensus(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-					for(int i = 0; i < block.size(); i++){
-						if(block.get(i).equals(valueDecided.get(i))){
-							response = "OK";
-						}
-						else{
-							response = "No Decision";
-							break;
-						}
+					if(ibft_f.compareLists(block, valueDecided)){
+						response = "OK";
 					}
+					else{
+						response = "No Decision";
+						break;
+					}
+
 					if(response.equals("OK")){
 						System.out.println("All good");
 						operations = bC.executeBlock(block);
 						for (operation opera: operations){
-							System.out.println(opera.toString());
+							System.out.println(opera.getID());
 						}
-						block.clear();
 						response = "OK";
 					}
 					else{
-						block.clear();
 						response = "No Decision";
 					}
 
@@ -602,9 +601,13 @@ public class SecureServer {
 							break;
 					}
 
-					respondToClient(path, socket, response, port, clientPacket.getPort() + 3);
+					System.out.println("Going to respond to client with " + response);
 
-					System.out.printf("Im a normal server and this was the value agreed: " + valueDecided + "\n");
+					for(operation opera: block){
+						respondToClient(path, socket, response, port, opera.getPort());
+					}
+
+					block.clear();
 
 		/* --------------------------------------------------------------------------------------------------------------------------- */
 				}
@@ -613,30 +616,31 @@ public class SecureServer {
 				else if (serverType.equals(server_type.B_PC.toString())){
 					valueDecided = byzantineProcessPC(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-					for(int i = 0; i < block.size(); i++){
-						if(block.get(i).equals(valueDecided.get(i))){
-							response = "OK";
-						}
-						else{
-							response = "No Decision";
-							break;
-						}
+					if(ibft_f.compareLists(block, valueDecided)){
+						response = "OK";
 					}
+					else{
+						response = "No Decision";
+						break;
+					}
+					
 					if(response.equals("OK")){
 						System.out.println("All good");
 						operations = bC.executeBlock(block);
 						for (operation opera: operations){
-							System.out.println(opera.toString());
+							System.out.println(opera.getID());
 						}
-						block.clear();
 						response = "OK";
 					}
 					else{
-						block.clear();
 						response = "No Decision";
 					}
 
-					respondToClient(keyPathPriv3, socket, response, port, clientPacket.getPort() + 3);
+					for(operation opera: block){
+						respondToClient(keyPathPriv3, socket, response, port, opera.getPort());
+					}
+
+					block.clear();
 
 					System.out.printf("Im byzantine and i got this value " + valueDecided);
 				}
@@ -644,30 +648,31 @@ public class SecureServer {
 				else if (serverType.equals(server_type.B_PP.toString())){
 					valueDecided = byzantineProcessPP(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-					for(int i = 0; i < block.size(); i++){
-						if(block.get(i).equals(valueDecided.get(i))){
-							response = "OK";
-						}
-						else{
-							response = "No Decision";
-							break;
-						}
+					if(ibft_f.compareLists(block, valueDecided)){
+						response = "OK";
 					}
+					else{
+						response = "No Decision";
+						break;
+					}
+
 					if(response.equals("OK")){
 						System.out.println("All good");
 						operations = bC.executeBlock(block);
 						for (operation opera: operations){
-							System.out.println(opera.toString());
+							System.out.println(opera.getID());
 						}
-						block.clear();
 						response = "OK";
 					}
 					else{
-						block.clear();
 						response = "No Decision";
 					}
 
-					respondToClient(keyPathPriv3, socket, response, port, clientPacket.getPort() + 3);
+					for(operation opera: block){
+						respondToClient(keyPathPriv3, socket, response, port, opera.getPort());
+					}
+
+					block.clear();
 
 					System.out.printf("Im byzantine and i got this value " + valueDecided);
 				}
@@ -675,30 +680,31 @@ public class SecureServer {
 				else if (serverType.equals(server_type.B_PC_T.toString())){
 					valueDecided = byzantineProcessPCT(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
 
-					for(int i = 0; i < block.size(); i++){
-						if(block.get(i).equals(valueDecided.get(i))){
-							response = "OK";
-						}
-						else{
-							response = "No Decision";
-							break;
-						}
+					if(ibft_f.compareLists(block, valueDecided)){
+						response = "OK";
 					}
+					else{
+						response = "No Decision";
+						break;
+					}
+
 					if(response.equals("OK")){
 						System.out.println("All good");
 						operations = bC.executeBlock(block);
 						for (operation opera: operations){
-							System.out.println(opera.toString());
+							System.out.println(opera.getID());
 						}
-						block.clear();
 						response = "OK";
 					}
 					else{
-						block.clear();
 						response = "No Decision";
 					}
 
-					respondToClient(keyPathPriv3, socket, response, port, clientPacket.getPort() + 3);
+					for(operation opera: block){
+						respondToClient(keyPathPriv3, socket, response, port, opera.getPort());
+					}
+
+					block.clear();
 
 					System.out.printf("Im byzantine and i got this value " + valueDecided);
 				}

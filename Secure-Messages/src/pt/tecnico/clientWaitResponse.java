@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
-public class clientWaitResponse implements Callable<String> {
+public class clientWaitResponse implements Callable<Integer> {
 
     private final static String keyPathPublicServer = "keys/serverPub.der";
 	private final static String keyPathPublicServer1 = "keys/serverPub1.der";
@@ -100,12 +100,12 @@ public class clientWaitResponse implements Callable<String> {
     }
     
     @Override
-    public String call() throws Exception {
+    public Integer call() throws Exception {
         // Code to be executed in this thread
         Map<String, List<Integer>> receivedResponses = new HashMap<String, List<Integer>>();
 
         DatagramSocket socket = new DatagramSocket(myPort);
-		System.out.printf("Wait for quorum of responses\n");
+		System.out.println("Wait for quorum of responses on port" + myPort);
 
 		//Cycle waitin for quorum
 		while(true){
@@ -154,11 +154,11 @@ public class clientWaitResponse implements Callable<String> {
             
                     if(!body.equals("OK")){
                         System.out.println("Vou sair com 1");
-                        System.exit(1);
+                        return 1;
                     }
                     else{
                         System.out.println("Vou sair com 0");
-                        System.exit(0);
+                        return 0;
                     }
 				}
 

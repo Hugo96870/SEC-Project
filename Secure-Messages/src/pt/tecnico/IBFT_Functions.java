@@ -2,8 +2,6 @@ package pt.tecnico;
 
 import java.net.*;
 import java.util.Base64;
-import java.util.Collection;
-import java.util.Iterator;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import com.google.gson.JsonObject;
@@ -48,19 +46,37 @@ public class IBFT_Functions{
 		for(int j = 0; j < ops.size(); j++){
 			if(ops.get(j).get("type").getAsString().equals("CREATE")){
 				operation operation = new operation(ops.get(j).get("type").getAsString(),
-				auxF.convertStrToPK(ops.get(j).get("source").getAsString()));
+				auxF.convertStrToPK(ops.get(j).get("source").getAsString()),
+					Integer.parseInt(ops.get(j).get("port").getAsString()));
 				value.add(operation);
 			}
 			else if(ops.get(j).get("type").getAsString().equals("TRANSFER")){
 				operation operation = new operation(ops.get(j).get("type").getAsString(),
 				auxF.convertStrToPK(ops.get(j).get("source").getAsString()),
 				auxF.convertStrToPK(ops.get(j).get("dest").getAsString()), 
-							Integer.parseInt(ops.get(j).get("amount").getAsString()));
+							Integer.parseInt(ops.get(j).get("amount").getAsString()),
+								Integer.parseInt(ops.get(j).get("port").getAsString()));
 				value.add(operation);
 			}
 		}
 
 		return value;
+	}
+
+	public boolean compareLists(List<operation> list1, List<operation> list2){
+		Integer counterValidEntries = 0;
+		for(int j = 0; j < list2.size(); j++){
+			for(int k = 0; k < list1.size(); k++){
+				if(list1.get(k).equals(list2.get(j))){
+					counterValidEntries++;
+					if(counterValidEntries.equals(list2.size())){
+						return true;
+					}
+					break;
+				}
+			}
+		}
+		return false;
 	}
 
 	public List<operation> waitForQuorum(Map<List<operation>, List<Integer>> values, Integer consensusNumber,
@@ -149,19 +165,10 @@ public class IBFT_Functions{
 							// Add to list of received
 							for (List<operation> key : values.keySet()) {
 								System.out.println(values.get(key));
-								Integer counterValidEntries = 0;
-								for(int j = 0; j < value.size(); j++){
-									for(int k = 0; k < key.size(); k++){
-										if(key.get(k).equals(value.get(j))){
-											counterValidEntries++;
-											if(counterValidEntries.equals(value.size())){
-												if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess)))
-													values.get(key).add(8000 + Integer.parseInt(idMainProcess));
-												entry = key;
-											}
-											break;
-										}
-									}
+								if(compareLists(key, value)){
+									if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess)))
+										values.get(key).add(8000 + Integer.parseInt(idMainProcess));
+									entry = key;
 								}
 							}
 							//if vote didnt match any existing key
@@ -173,7 +180,7 @@ public class IBFT_Functions{
 
 							// If we reached consensus
 							if(values.get(entry).size() >= consensusNumber){
-								System.out.printf("Agreed on value " + value + " for type " + type + "\n");
+								System.out.printf("Agreed on value for type " + type + "\n");
 								return value;
 							}
 						}
@@ -225,11 +232,13 @@ public class IBFT_Functions{
 						jsonObject.addProperty("type", valueToSend.get(j).getID().toString());
 						if(valueToSend.get(j).getID().toString().equals("CREATE")){
 							jsonObject.addProperty("source", Base64.getEncoder().encodeToString(valueToSend.get(j).getSource().getEncoded()));
+							jsonObject.addProperty("port", valueToSend.get(j).getPort().toString());
 						}
 						else if(valueToSend.get(j).getID().toString().equals("TRANSFER")){
 							jsonObject.addProperty("amount", valueToSend.get(j).getAmount().toString());
 							jsonObject.addProperty("source", Base64.getEncoder().encodeToString(valueToSend.get(j).getSource().getEncoded()));
 							jsonObject.addProperty("dest", Base64.getEncoder().encodeToString(valueToSend.get(j).getDestination().getEncoded()));
+							jsonObject.addProperty("port", valueToSend.get(j).getPort().toString());
 						}
 						message.add("op" + j, jsonObject);
 					}

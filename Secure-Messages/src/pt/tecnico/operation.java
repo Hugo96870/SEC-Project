@@ -2,8 +2,6 @@ package pt.tecnico;
 
 import java.security.PublicKey;
 
-import pt.tecnico.IBFT_Functions.message_type;
-
 public class operation{
 
     enum operation_type{
@@ -15,19 +13,22 @@ public class operation{
     PublicKey source;
     PublicKey destination;
     Integer amount;
+    Integer port;
 
-    public operation(String identifier, PublicKey source, PublicKey destination, Integer amount){
+    public operation(String identifier, PublicKey source, PublicKey destination, Integer amount, Integer port){
         this.identifier = operation_type.TRANSFER;
         this.source = source;
         this.destination = destination;
         this.amount = amount;
+        this.port = port;
     }
 
-    public operation(String identifier, PublicKey source){
+    public operation(String identifier, PublicKey source, Integer port){
         this.identifier = operation_type.CREATE;
         this.source = source;
         this.destination = null;
         this.amount = null;
+        this.port = port;
     }
 
     public PublicKey getSource(){
@@ -63,6 +64,10 @@ public class operation{
             return this.identifier.toString().equals(op.identifier.toString()) && this.amount.equals(op.amount) &&
                 this.source.equals(op.source) && this.destination.equals(op.destination);
         }
+    }
+
+    public Integer getPort(){
+        return this.port;
     }
 
 }

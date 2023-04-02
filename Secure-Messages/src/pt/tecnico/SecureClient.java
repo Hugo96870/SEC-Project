@@ -4,7 +4,6 @@ import java.net.*;
 import java.util.Base64;
 import java.io.IOException;
 import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.security.PublicKey;
 
 import com.google.gson.JsonObject;
@@ -13,6 +12,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.*;
 import java.util.Map;
+import java.util.Random;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
@@ -39,7 +39,7 @@ public class SecureClient {
 	private static Map<String, String> keyByUser = new HashMap<String, String>(); 
 	private static Scanner scanner = new Scanner(System.in);
 
-	public static String createRequestMessage(){
+	public static String createRequestMessage(Integer port){
 
 		System.out.print("> ");
 		while (!scanner.hasNextLine()) {
@@ -65,6 +65,7 @@ public class SecureClient {
 				requestJson = JsonParser.parseString("{}").getAsJsonObject();
 				{
 					requestJson.addProperty("type", cmd);
+					requestJson.addProperty("port", port.toString());
 					requestJson.addProperty("pubKey", keySource);
 				}
 
@@ -89,6 +90,7 @@ public class SecureClient {
 					requestJson.addProperty("source", keySource);
 					requestJson.addProperty("dest", keyDestination);
 					requestJson.addProperty("amount", line.split(SPACE)[3]);
+					requestJson.addProperty("port", port.toString());
 				}
 				break;
 			default:
@@ -211,7 +213,12 @@ public class SecureClient {
 
 		while(true){
 
-			String dataToSend = createRequestMessage();
+			Random random = new Random();
+
+			// generate a random number between 49152 and 65535
+			int randomNumber = random.nextInt(65535 - 49152 + 1) + 49152;
+
+			String dataToSend = createRequestMessage(randomNumber);
 
 			ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
 			List<sendAndReceiveAck> myThreads = new ArrayList<>();
@@ -238,7 +245,7 @@ public class SecureClient {
 
 			ExecutorService executorServiceReceive = Executors.newSingleThreadExecutor();
 			//PROBLEMA NO PORT DE RECEBER A MAIORIA
-			executorServiceReceive.submit(new clientWaitResponse(port + 6, auxF, consensusNumber));
+			executorServiceReceive.submit(new clientWaitResponse(randomNumber, auxF, consensusNumber));
 
 		}
 	}
