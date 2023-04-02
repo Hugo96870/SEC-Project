@@ -20,8 +20,14 @@ public class blockChain{
         B_PP;
 	}
 
-    private final Integer startBalance = 100;
+    private final static String keyPathPublicMiner = "keys/serverPub.der";
+
+    private static auxFunctions auxF = new auxFunctions();
+
+    private final Double startBalance = 100.0;
     private final Integer blockSize = 5;
+
+    private Double minerTax = 0.05;
 
     public server_type sT;
 
@@ -36,7 +42,7 @@ public class blockChain{
     //Number to achieve consensus
     private Integer consensusMajority;
 
-    Map<PublicKey, Integer> accounts;
+    Map<PublicKey, Double> accounts;
 
     List<operation> operations;
 
@@ -51,8 +57,10 @@ public class blockChain{
         leaderPort = 8000;
         consensusMajority = (nrPorts + (nrPorts-1)/3)/2 + 1;
         instanceNumber = 0;
-        accounts = new HashMap<PublicKey, Integer>();
+        accounts = new HashMap<PublicKey, Double>();
         operations = new ArrayList<operation>();
+
+        accounts.put(auxF.convertStrToPK(keyPathPublicMiner), startBalance);
     }
 
     public Integer getBlockSize(){
@@ -96,7 +104,7 @@ public class blockChain{
         return false;
     }
 
-    public Integer check_balance(PublicKey key){
+    public Double check_balance(PublicKey key){
         return accounts.get(key);
     }
 
@@ -107,7 +115,11 @@ public class blockChain{
             return false;
         }
         accounts.replace(source, accounts.get(source), accounts.get(source) - amount);
-        accounts.replace(destination, accounts.get(destination), accounts.get(destination) + amount);
+
+        accounts.replace(destination, accounts.get(destination), accounts.get(destination) + (amount * (1 - minerTax)));
+        accounts.replace(auxF.convertStrToPK(keyPathPublicMiner),
+                accounts.get(auxF.convertStrToPK(keyPathPublicMiner)),
+                        accounts.get(auxF.convertStrToPK(keyPathPublicMiner)) + amount * minerTax);
         return true;
     }
 
