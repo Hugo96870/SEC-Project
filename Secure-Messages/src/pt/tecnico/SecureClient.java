@@ -48,15 +48,16 @@ public class SecureClient {
 		String line = scanner.nextLine();
 		String cmd = line.split(SPACE)[0];
 		JsonObject requestJson;
-		String keySource = null, keyDestination = null;
+		String keySource = null, keyDestination = null, path = null;
+		PublicKey publickey = null;
 
 		switch (cmd) {
 			case("CREATE"):
-				String path = keyByUser.get(line.split(SPACE)[1]);
-				PublicKey publicKey = auxF.getPublicKey(path);
+				path = keyByUser.get(line.split(SPACE)[1]);
+				publickey = auxF.getPublicKey(path);
 
 				try{
-					keySource = Base64.getEncoder().encodeToString(publicKey.getEncoded());
+					keySource = Base64.getEncoder().encodeToString(publickey.getEncoded());
 				} catch(Exception e){
 					System.err.println("Error converting key");
 					System.err.println(e.getMessage());
@@ -91,6 +92,26 @@ public class SecureClient {
 					requestJson.addProperty("dest", keyDestination);
 					requestJson.addProperty("amount", line.split(SPACE)[3]);
 					requestJson.addProperty("port", port.toString());
+				}
+				break;
+			case("BALANCE"):
+				path = keyByUser.get(line.split(SPACE)[1]);
+				publickey = auxF.getPublicKey(path);
+				String mode = line.split(SPACE)[2];
+
+				try{
+					keySource = Base64.getEncoder().encodeToString(publickey.getEncoded());
+				} catch(Exception e){
+					System.err.println("Error converting key");
+					System.err.println(e.getMessage());
+				}
+
+				requestJson = JsonParser.parseString("{}").getAsJsonObject();
+				{
+					requestJson.addProperty("type", cmd);
+					requestJson.addProperty("port", port.toString());
+					requestJson.addProperty("pubKey", keySource);
+					requestJson.addProperty("mode", mode);
 				}
 				break;
 			default:
@@ -244,7 +265,6 @@ public class SecureClient {
 			}
 
 			ExecutorService executorServiceReceive = Executors.newSingleThreadExecutor();
-			//PROBLEMA NO PORT DE RECEBER A MAIORIA
 			executorServiceReceive.submit(new clientWaitResponse(randomNumber, auxF, consensusNumber));
 
 		}

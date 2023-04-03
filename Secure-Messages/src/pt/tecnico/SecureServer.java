@@ -8,7 +8,6 @@ import java.security.PublicKey;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import pt.tecnico.IBFT_Functions.message_type;
-import pt.tecnico.blockChain.server_type;
 import java.util.Base64;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +33,45 @@ public class SecureServer {
 	private static final String keyPathPriv1 = "keys/serverPriv1.der";
 	private static final String keyPathPriv2 = "keys/serverPriv2.der";
 	private static final String keyPathPriv3 = "keys/serverPriv3.der";
+
+	private static void respondToPendingProcesses(List<operation> block, List<operation> valueDecided, blockChain bC, String path,
+														DatagramSocket socket, List<operation> strongReadsQueue, Integer port){
+
+		String response;
+		String responseToRead = null;
+
+		if(ibft_f.compareLists(block, valueDecided)){
+			response = "OK";
+		}
+		else{
+			response = "No Decision";
+		}
+
+		if(response.equals("OK")){
+			System.out.println("All good");
+			bC.executeBlock(block);
+			response = "OK";
+		}
+		else{
+			response = "No Decision";
+		}
+
+		System.out.println("Going to respond to client with " + response);
+
+		for(operation opera: block){
+			sendMessageToClient(path, socket, response, port, opera.getPort());
+		}
+
+		for(operation oper: strongReadsQueue){
+			if(bC.check_balance(oper.getSource()) == null){
+				responseToRead = "Account doesn't exist";
+			}
+			else{
+				responseToRead = bC.check_balance(oper.getSource()).toString();
+			}
+			sendMessageToClient(path, socket, responseToRead, port, oper.getPort());
+		}
+	}
 
 	public static operation parseInput(DatagramPacket clientPacket, String pathToKey){
 	
@@ -118,6 +156,22 @@ public class SecureServer {
 
 				op = new operation("TRANSFER", keySource, keyDestination, Integer.parseInt(amount), Integer.parseInt(port));
 				break;
+			case("BALANCE"):
+				String key = null, mode = null;
+				{
+					key = requestJson.get("pubKey").getAsString();
+					mode = requestJson.get("mode").getAsString();
+				}
+
+				try{
+					keySource = auxF.convertStrToPK(key);
+				} catch(Exception e){
+					System.err.println("Error converting key");
+					System.err.println(e.getMessage());
+				}
+
+				op = new operation("BALANCE", keySource, Integer.parseInt(port), mode);
+				break;
 			default:
 				break;
 		}
@@ -200,14 +254,14 @@ public class SecureServer {
 	}
 
 	public static List<operation> leaderConsensus(DatagramSocket socket, Integer consensusNumber, List<operation> input,
-								List<Integer> serverports, Integer port, blockChain bC){
+								List<Integer> serverports, Integer port, blockChain bC, String path){
 
 		//Create prepare and commit messages maps
 		Map<List<operation>, List<Integer>> prepareValues = new HashMap<List<operation>, List<Integer>>();
 		Map<List<operation>, List<Integer>> commitValues = new HashMap<List<operation>, List<Integer>>();
 
 		//Send Prepare to all, we assume we received preprepare from ourselves
-		ibft_f.sendMessageToAll(message_type.PREPARE, input, serverports, port, socket, consensusNumber, bC.getInstance());
+		ibft_f.sendMessageToAll(message_type.PREPARE, input, serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		//add value to prepare map
 		prepareValues.put(input, new ArrayList<Integer>());
@@ -217,7 +271,7 @@ public class SecureServer {
 		List<operation> valueAgreed = ibft_f.waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket, bC.getInstance(), bC);
 
 		//Once the quorum is reached, send commit to all
-		ibft_f.sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket, consensusNumber, bC.getInstance());
+		ibft_f.sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		//add value to commit map
 		commitValues.put(input, new ArrayList<Integer>());
@@ -237,7 +291,7 @@ public class SecureServer {
 	}
 
 	public static List<operation> normalConsensus(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
-								List<Integer> serverports, Integer port, blockChain bC){
+								List<Integer> serverports, Integer port, blockChain bC, String path){
 
 		//Create commit and prepare maps
 		Map<List<operation>, List<Integer>> prepareValues = new HashMap<List<operation>, List<Integer>>();
@@ -248,7 +302,7 @@ public class SecureServer {
 		bC.increaseInstance();
 
 		//send prepare message to all
-		ibft_f.sendMessageToAll(message_type.PREPARE, valueReceived, serverports, port, socket, consensusNumber, bC.getInstance());
+		ibft_f.sendMessageToAll(message_type.PREPARE, valueReceived, serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		//add value of prepare to map
 		prepareValues.put(valueReceived, new ArrayList<Integer>());
@@ -258,7 +312,7 @@ public class SecureServer {
 		List<operation> valueAgreed = ibft_f.waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket, bC.getInstance(), bC);
 
 		//send commit message to all
-		ibft_f.sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket, consensusNumber, bC.getInstance());
+		ibft_f.sendMessageToAll(message_type.COMMIT, valueAgreed, serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		//add value sent in commits to commit map
 		commitValues.put(valueAgreed, new ArrayList<Integer>());
@@ -278,7 +332,7 @@ public class SecureServer {
 	}
 
 	//Sends encrypted message to client confirming the string appended
-	public static void respondToClient(String keyPathPriv,
+	public static void sendMessageToClient(String keyPathPriv,
 									DatagramSocket socket, String valueToSend, Integer port, int clientPort){
 		/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
 
@@ -339,7 +393,7 @@ public class SecureServer {
 
 	//Byzantine process doesnt respect Prepare and Commit values
 	public static List<operation> byzantineProcessPC(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
-							List<Integer> serverports, Integer port, blockChain bC){
+							List<Integer> serverports, Integer port, blockChain bC, String path){
 
 		Map<List<operation>, List<Integer>> prepareValues = new HashMap<List<operation>, List<Integer>>();
 		Map<List<operation>, List<Integer>> commitValues = new HashMap<List<operation>, List<Integer>>();
@@ -348,14 +402,14 @@ public class SecureServer {
 
 		List<operation> op = new ArrayList<operation>();
 
-		ibft_f.sendMessageToAll(message_type.PREPARE, op, serverports, port, socket, consensusNumber, bC.getInstance());
+		ibft_f.sendMessageToAll(message_type.PREPARE, op, serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		prepareValues.put(op, new ArrayList<Integer>());
 		prepareValues.get(op).add(port);
 
 		ibft_f.waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket, bC.getInstance(), bC);
 
-		ibft_f.sendMessageToAll(message_type.COMMIT, op, serverports, port, socket, consensusNumber, bC.getInstance());
+		ibft_f.sendMessageToAll(message_type.COMMIT, op, serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		commitValues.put(op, new ArrayList<Integer>());
 		commitValues.get(op).add(port);
@@ -371,7 +425,7 @@ public class SecureServer {
 
 	//Byzantine process tries to send PrePrepare even though he is not the leader and doesnt respect Prepare and Commit messages
 	public static List<operation> byzantineProcessPP(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
-						List<Integer> serverports, Integer port, blockChain bC){
+						List<Integer> serverports, Integer port, blockChain bC, String path){
 
 		Map<List<operation>, List<Integer>> prepareValues = new HashMap<List<operation>, List<Integer>>();
 		Map<List<operation>, List<Integer>> commitValues = new HashMap<List<operation>, List<Integer>>();
@@ -380,10 +434,10 @@ public class SecureServer {
 
 		bC.increaseInstance();
 		ibft_f.sendMessageToAll(message_type.PREPREPARE, op, bC.getPorts(), port,
-								socket,  bC.getConsensusMajority(), bC.getInstance());
+								socket,  bC.getConsensusMajority(), bC.getInstance(), path);
 
 		ibft_f.sendMessageToAll(message_type.PREPARE, op, serverports,
-								port, socket, consensusNumber, bC.getInstance());
+								port, socket, consensusNumber, bC.getInstance(), path);
 
 		prepareValues.put(op, new ArrayList<Integer>());
 		prepareValues.get(op).add(port);
@@ -391,7 +445,7 @@ public class SecureServer {
 		ibft_f.waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket, bC.getInstance(), bC);
 
 		ibft_f.sendMessageToAll(message_type.COMMIT, op,
-									serverports, port, socket, consensusNumber, bC.getInstance());
+									serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		commitValues.put(op, new ArrayList<Integer>());
 		commitValues.get(op).add(port);
@@ -407,7 +461,7 @@ public class SecureServer {
 
 	//Byzantine process sends several COMMITs and PREPAREs to other servers not respecting the algorithm
 	public static List<operation> byzantineProcessPCT(DatagramSocket socket, Integer consensusNumber, Integer leaderPort,
-					List<Integer> serverports, Integer port, blockChain bC){
+					List<Integer> serverports, Integer port, blockChain bC, String path){
 
 		Map<List<operation>, List<Integer>> prepareValues = new HashMap<List<operation>, List<Integer>>();
 		Map<List<operation>, List<Integer>> commitValues = new HashMap<List<operation>, List<Integer>>();
@@ -417,11 +471,11 @@ public class SecureServer {
 		List<operation> op = new ArrayList<operation>();
 
 		ibft_f.sendMessageToAll(message_type.PREPARE, op, serverports, port, socket,
-									consensusNumber, bC.getInstance());
+									consensusNumber, bC.getInstance(), path);
 		ibft_f.sendMessageToAll(message_type.PREPARE, op, serverports, port, socket,
-									consensusNumber, bC.getInstance());
+									consensusNumber, bC.getInstance(), path);
 		ibft_f.sendMessageToAll(message_type.PREPARE, op, serverports, port, socket,
-									consensusNumber, bC.getInstance());
+									consensusNumber, bC.getInstance(), path);
 
 		prepareValues.put(op, new ArrayList<Integer>());
 		prepareValues.get(op).add(port);
@@ -429,11 +483,11 @@ public class SecureServer {
 		ibft_f.waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket, bC.getInstance(), bC);
 
 		ibft_f.sendMessageToAll(message_type.COMMIT, op, serverports, port,
-									socket, consensusNumber, bC.getInstance());
+									socket, consensusNumber, bC.getInstance(), path);
 		ibft_f.sendMessageToAll(message_type.COMMIT, op, serverports, port, socket,
-									consensusNumber, bC.getInstance());
+									consensusNumber, bC.getInstance(), path);
 		ibft_f.sendMessageToAll(message_type.COMMIT, op, serverports, port, socket,
-									consensusNumber, bC.getInstance());
+									consensusNumber, bC.getInstance(), path);
 
 		commitValues.put(op, new ArrayList<Integer>());
 		commitValues.get(op).add(port);
@@ -454,6 +508,9 @@ public class SecureServer {
 			return;
 		}
 
+		//Pending reads
+		List<operation> strongReadsQueue = new ArrayList<operation>();
+
 		//Parse arguments
 		final Integer port = Integer.parseInt(args[0]);
 		final String serverType = args[1];
@@ -469,11 +526,8 @@ public class SecureServer {
 		DatagramSocket socket = new DatagramSocket(port);
 		System.out.printf("Server will receive packets on port %d %n", port);
 
-		List<DatagramPacket> requests = new ArrayList<>();
-		//Value to be sent to client
-		String response = null;
-
 		//Thread that receives inputs
+		List<DatagramPacket> requests = new ArrayList<>();
 		BlockingQueue<DatagramPacket> queue = new LinkedBlockingQueue<>();
 		Callable<Void> callable = new receiveString(requests, port + 3000, queue);
 		ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -481,12 +535,9 @@ public class SecureServer {
 
 		DatagramPacket clientPacket = null;
 
-		List<operation> operations;
-
-		// Wait for client packets 
 		while (true) {
 
-			/* ---------------------------------------Recebi mensagem do cliente e desencriptei------------------------------ */
+			// Wait for client packets 
 			Integer flag = 0;
 			try{
 				while(flag.equals(0)){
@@ -499,6 +550,8 @@ public class SecureServer {
 				System.err.println(e.getMessage());
 			}
 
+			
+			//Switch client port to know with which key to decrypt
 			String keyToDecrypt = null;
 			switch(((Integer)clientPacket.getPort()).toString()){
 				case "10003":
@@ -514,198 +567,147 @@ public class SecureServer {
 
 			operation op = parseInput(clientPacket, keyToDecrypt);
 
-			block.add(op);
+			//Switch port to know with which key to encrypt
+			String path = null;
+			switch(port.toString()){
+				case "8000":
+					path = keyPathPriv;
+					break;
+				case "8001":
+					path = keyPathPriv1;
+					break;
+				case "8002":
+					path = keyPathPriv2;
+					break;
+				case "8003":
+					path = keyPathPriv3;
+					break;
+			}
 
-			if(((Integer)block.size()).equals(bC.getBlockSize())){
-
-				//Algoritmo
-				if(bC.isLeader(port)){
-					System.out.println("Im the leader");
-		/* ------------------------------------- Broadcast PREPREPARE message ------------------------------ */
-
-					bC.increaseInstance();
-					ibft_f.sendMessageToAll(message_type.PREPREPARE, block, bC.getPorts(), port,
-											socket,  bC.getConsensusMajority(), bC.getInstance());
-
-
-	/* --------------------------------------------------------------------------------------------------------------------------- */
-				
-				/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
-
-					valueDecided = leaderConsensus(socket, bC.getConsensusMajority(), block, bC.getPorts(), port, bC);
-
-	/* --------------------------------------------------------------------------------------------------------------------------- */
-					if(ibft_f.compareLists(block, valueDecided)){
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-						break;
-					}
-
-					if(response.equals("OK")){
-						System.out.println("All good");
-						operations = bC.executeBlock(block);
-						for (operation opera: operations){
-							System.out.println(opera.getID());
-						}
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-					}
-
-					System.out.println("Going to respond to client with " + response);
-
-					for(operation opera: block){
-						respondToClient(keyPathPriv, socket, response, port, opera.getPort());
-					}
-
-					block.clear();
-
-				}
-				else if (serverType.equals(server_type.NORMAL.toString())){
-				/* ------------------------------------- Algoritmo de consenso  ------------------------------ */
-					System.out.println("Im a normal server");
-
-					valueDecided = normalConsensus(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
-
-					if(ibft_f.compareLists(block, valueDecided)){
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-						break;
-					}
-
-					if(response.equals("OK")){
-						System.out.println("All good");
-						operations = bC.executeBlock(block);
-						for (operation opera: operations){
-							System.out.println(opera.getID());
-						}
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-					}
-
-					String path = null;
-					switch(port.toString()){
-						case "8001":
-							path = keyPathPriv1;
+			//Operation is a read
+			if(op.getID().toString().equals("BALANCE") && op.getMode().equals("strong")){
+				Boolean doNow = true;
+				for(operation oper: block){
+					if(oper.getID().toString().equals("TRANSFER")){
+						if(oper.getDestination().equals(op.getSource()) || oper.getSource().equals(op.getSource())){
+							strongReadsQueue.add(op);
+							System.out.println("Não fazer agora");
+							doNow = false;
 							break;
-						case "8002":
-							path = keyPathPriv2;
+						}
+					}
+					else{
+						if(oper.getSource().equals(op.getSource())){
+							strongReadsQueue.add(op);
+							System.out.println("Não fazer agora");
+							doNow = false;
+							break;
+						}
+					}
+				}
+				if(doNow){
+					System.out.println("Vou responder JÁ");
+					String responseToClient = null;
+					if(bC.check_balance(op.getSource()) == null){
+						responseToClient = "Account doesn't exist";
+					}
+					else{
+						responseToClient = bC.check_balance(op.getSource()).toString();
+					}
+					sendMessageToClient(path, socket, responseToClient, port, op.getPort());
+				}
+			}
+			/*
+			if(op.getID().toString().equals("BALANCE") && op.getMode().equals("strong")){
+				String responseToClient = null;
+				if(bC.check_balance(op.getSource()) == null){
+					responseToClient = "Account doesn't exist";
+				}
+				else{
+					responseToClient = bC.check_balance(op.getSource()).toString();
+				}
+				sendMessageToClient(path, socket, responseToClient, port, op.getPort());
+			}
+			*/
+			else{
+				//If op is type CREATE or TRANSFER wait till block is full to run consensus
+				block.add(op);
+
+				if(((Integer)block.size()).equals(bC.getBlockSize())){
+					switch(serverType){
+						case "LEADER":
+							System.out.println("Im the leader");
+							//Broadcast PREPREPARE message
+							bC.increaseInstance();
+							ibft_f.sendMessageToAll(message_type.PREPREPARE, block, bC.getPorts(), port,
+													socket,  bC.getConsensusMajority(), bC.getInstance(), path);
+							//Run consensus algorythm
+							valueDecided = leaderConsensus(socket, bC.getConsensusMajority(), block, bC.getPorts(), port, bC, path);
+
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+	
+							bC.printState();
+	
+							block.clear();
+	
+							strongReadsQueue.clear();
+							break;
+						case "NORMAL":
+							System.out.println("Im a normal server");
+							//Run consensus algorythm
+							valueDecided = normalConsensus(socket, bC.getConsensusMajority(), bC.getLeaderPort(),
+										bC.getPorts(), port, bC, path);
+	
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+	
+							bC.printState();
+	
+							block.clear();
+	
+							strongReadsQueue.clear();
+							break;
+						case "B_PC":
+							// Caso o processo seja bizantino e não respeite o valor as mensagens COMMIT e PREPARE
+							//Run consensus algorythm
+							valueDecided = byzantineProcessPC(socket, bC.getConsensusMajority(), bC.getLeaderPort(),	
+										bC.getPorts(), port, bC, path);
+
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+
+							bC.printState();
+
+							block.clear();
+
+							strongReadsQueue.clear();
+							break;
+						case "B_PP":
+							// Caso o processo seja bizantino e não respeite as mensagens PREPREPARE e o valor dos COMMITs e PREPAREs
+							//Run consensus algorythm
+							valueDecided = byzantineProcessPP(socket, bC.getConsensusMajority(), bC.getLeaderPort(),
+										bC.getPorts(), port, bC, path);
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+
+							bC.printState();
+
+							block.clear();
+
+							strongReadsQueue.clear();
+							break;
+						case "B_PC_T":
+							// Caso o processo seja bizantino e envie várias vezes PREPARE E COMMIT fora de ordem
+							//Run consensus algorythm
+							valueDecided = byzantineProcessPCT(socket, bC.getConsensusMajority(), bC.getLeaderPort(),
+										bC.getPorts(), port, bC, path);
+
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+
+							bC.printState();
+
+							block.clear();
+
+							strongReadsQueue.clear();
 							break;
 					}
-
-					System.out.println("Going to respond to client with " + response);
-
-					for(operation opera: block){
-						respondToClient(path, socket, response, port, opera.getPort());
-					}
-
-					block.clear();
-
-		/* --------------------------------------------------------------------------------------------------------------------------- */
-				}
-
-				// Caso o processo seja bizantino e não respeite o valor as mensagens COMMIT e PREPARE
-				else if (serverType.equals(server_type.B_PC.toString())){
-					valueDecided = byzantineProcessPC(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
-
-					if(ibft_f.compareLists(block, valueDecided)){
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-						break;
-					}
-					
-					if(response.equals("OK")){
-						System.out.println("All good");
-						operations = bC.executeBlock(block);
-						for (operation opera: operations){
-							System.out.println(opera.getID());
-						}
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-					}
-
-					for(operation opera: block){
-						respondToClient(keyPathPriv3, socket, response, port, opera.getPort());
-					}
-
-					block.clear();
-
-					System.out.printf("Im byzantine and i got this value " + valueDecided);
-				}
-				// Caso o processo seja bizantino e não respeite as mensagens PREPREPARE e o valor dos COMMITs e PREPAREs
-				else if (serverType.equals(server_type.B_PP.toString())){
-					valueDecided = byzantineProcessPP(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
-
-					if(ibft_f.compareLists(block, valueDecided)){
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-						break;
-					}
-
-					if(response.equals("OK")){
-						System.out.println("All good");
-						operations = bC.executeBlock(block);
-						for (operation opera: operations){
-							System.out.println(opera.getID());
-						}
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-					}
-
-					for(operation opera: block){
-						respondToClient(keyPathPriv3, socket, response, port, opera.getPort());
-					}
-
-					block.clear();
-
-					System.out.printf("Im byzantine and i got this value " + valueDecided);
-				}
-				// Caso o processo seja bizantino e envie várias vezes PREPARE E COMMIT fora de ordem
-				else if (serverType.equals(server_type.B_PC_T.toString())){
-					valueDecided = byzantineProcessPCT(socket, bC.getConsensusMajority(), bC.getLeaderPort(), bC.getPorts(), port, bC);
-
-					if(ibft_f.compareLists(block, valueDecided)){
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-						break;
-					}
-
-					if(response.equals("OK")){
-						System.out.println("All good");
-						operations = bC.executeBlock(block);
-						for (operation opera: operations){
-							System.out.println(opera.getID());
-						}
-						response = "OK";
-					}
-					else{
-						response = "No Decision";
-					}
-
-					for(operation opera: block){
-						respondToClient(keyPathPriv3, socket, response, port, opera.getPort());
-					}
-
-					block.clear();
-
-					System.out.printf("Im byzantine and i got this value " + valueDecided);
 				}
 			}
 		}

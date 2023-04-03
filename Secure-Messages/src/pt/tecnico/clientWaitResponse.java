@@ -150,16 +150,9 @@ public class clientWaitResponse implements Callable<Integer> {
                     // Close socket
                     socket.close();
             
-                    System.out.printf(body + "\n");
+                    System.out.printf("Received response: %s \n", body);
             
-                    if(!body.equals("OK")){
-                        System.out.println("Vou sair com 1");
-                        return 1;
-                    }
-                    else{
-                        System.out.println("Vou sair com 0");
-                        return 0;
-                    }
+                    return 0;
 				}
 
 			}catch(Exception e){

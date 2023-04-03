@@ -1,9 +1,13 @@
 package pt.tecnico;
 
 import java.util.List;
+import java.security.KeyFactory;
 import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Map;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 import pt.tecnico.operation.operation_type;
 
@@ -21,8 +25,6 @@ public class blockChain{
 	}
 
     private final static String keyPathPublicMiner = "keys/serverPub.der";
-
-    private static auxFunctions auxF = new auxFunctions();
 
     private final Double startBalance = 100.0;
     private final Integer blockSize = 5;
@@ -46,6 +48,8 @@ public class blockChain{
 
     List<operation> operations;
 
+    PublicKey pubMiner;
+
     public blockChain(){
         nrPorts = 4;
 
@@ -59,8 +63,17 @@ public class blockChain{
         instanceNumber = 0;
         accounts = new HashMap<PublicKey, Double>();
         operations = new ArrayList<operation>();
+        try{
+            byte[] publicKeyBytes = Files.readAllBytes(Paths.get(keyPathPublicMiner));
+            X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+            pubMiner = keyFactory.generatePublic(keySpec);
+        }catch(Exception e){
+            System.err.println("Account miner error");
+            System.err.println(e.getMessage());
+        }
 
-        accounts.put(auxF.convertStrToPK(keyPathPublicMiner), startBalance);
+        accounts.put(pubMiner, startBalance);
     }
 
     public Integer getBlockSize(){
@@ -108,18 +121,18 @@ public class blockChain{
         return accounts.get(key);
     }
 
-    //DUVIDA: TAXA DO LIDER
     public boolean transfer(PublicKey source, PublicKey destination, int amount){
-        if(!accounts.containsKey(source) || !accounts.containsKey(destination) || accounts.get(source) < amount){
+        if(!accounts.containsKey(source) || !accounts.containsKey(destination) || accounts.get(source) < amount
+                        || source.equals(destination)){
             System.err.println("Can't perform the transaction");
             return false;
         }
         accounts.replace(source, accounts.get(source), accounts.get(source) - amount);
 
         accounts.replace(destination, accounts.get(destination), accounts.get(destination) + (amount * (1 - minerTax)));
-        accounts.replace(auxF.convertStrToPK(keyPathPublicMiner),
-                accounts.get(auxF.convertStrToPK(keyPathPublicMiner)),
-                        accounts.get(auxF.convertStrToPK(keyPathPublicMiner)) + amount * minerTax);
+        accounts.replace(pubMiner,
+                accounts.get(pubMiner),
+                        accounts.get(pubMiner) + amount * minerTax);
         return true;
     }
 
@@ -139,5 +152,12 @@ public class blockChain{
         }
 
         return this.operations;
+    }
+
+    public void printState(){
+        for(PublicKey key: accounts.keySet()){
+            System.out.println("Conta: " + key);
+            System.out.println("Saldo: " + accounts.get(key));
+        }
     }
 }

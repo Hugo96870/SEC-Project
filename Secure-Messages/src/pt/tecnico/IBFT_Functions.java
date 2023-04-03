@@ -22,6 +22,11 @@ public class IBFT_Functions{
 	 * protocol, is 65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header.
 	 */
 
+	 private final static String keyPathPublicServer = "keys/serverPub.der";
+	 private final static String keyPathPublicServer1 = "keys/serverPub1.der";
+	 private final static String keyPathPublicServer2 = "keys/serverPub2.der";
+	 private final static String keyPathPublicServer3 = "keys/serverPub3.der";
+
 	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
 
 	/** Buffer size for receiving a UDP packet. */
@@ -92,100 +97,148 @@ public class IBFT_Functions{
 				socket.receive(messageFromServer);
 
 				String clientText = null;
-				
+
 				try{
-					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(messageFromServer.getData()), messageFromServer.getLength());
+					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(messageFromServer.getData()),
+						messageFromServer.getLength());
 				}
 				catch(Exception e){
 					System.err.println("Message conversion failed");
 					System.err.println(e.getMessage());
 				}
-
-				//Parse Json with payload and hmac
-				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
-				String hmac = null, receivedFromJson = null;
-				{
-					hmac = received.get("hmac").getAsString();
-					receivedFromJson = received.get("payload").getAsString();
-				}
-
-				// Parse JSON and extract arguments
 				JsonObject requestJson = null;
+				if(type.equals(message_type.PREPARE)){
+					//Parse Json with payload and hmac
+					JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+					String receivedFromJson = null, signatureEncrypted = null;
+					{
+						receivedFromJson = received.get("payload").getAsString();
+						signatureEncrypted = received.get("signature").getAsString();
+					}
+					// Parse JSON and extract arguments
+					try{
+						requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+					} catch (Exception e){
+						System.err.println("Failed to parse Json received");
+						System.err.println(e.getMessage());
+					}
+					{
+						idMainProcess = requestJson.get("idMainProcess").getAsString();
+					}
+					String pathToKey = null;
+					switch(idMainProcess){
+						case "0":
+							pathToKey = keyPathPublicServer;
+							break;
+						case "1":
+							pathToKey = keyPathPublicServer1;
+							break;
+						case "2":
+							pathToKey = keyPathPublicServer2;
+							break;
+						case "3":
+							pathToKey = keyPathPublicServer3;
+							break;
+					}
+			
+					try{
+						String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, pathToKey);
+						byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
+						String hashString = new String(payloadHash, "UTF-8");
+						hashString.equals(signatureReceived);
+						System.out.println("AASINATURA BOAAAAAAAAAAAAA");
+					}catch (Exception e){
+						System.err.println("Error in assymetric decryption");
+						System.err.println(e.getMessage());
+						System.exit(1);
+					}
+				}
+				else{
+					//Parse Json with payload and hmac
+					JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+					String hmac = null, receivedFromJson = null;
+					{
+						hmac = received.get("hmac").getAsString();
+						receivedFromJson = received.get("payload").getAsString();
+					}
+	
+					// Parse JSON and extract arguments
+					try{
+						requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+					} catch (Exception e){
+						System.err.println("Failed to parse Json received");
+						System.err.println(e.getMessage());
+					}
+	
+					boolean integrityCheck = auxF.checkIntegrity(hmac, requestJson);
+	
+					if(!integrityCheck){
+						System.err.println("Integrity violated");
+						System.exit(1);
+					}
+				}
 				try{
-					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+					List<JsonObject> ops = new ArrayList<JsonObject>(bC.getBlockSize());
+					{
+						messageType = requestJson.get("messageType").getAsString();
+						instance = requestJson.get("instance").getAsString();
+						idMainProcess = requestJson.get("idMainProcess").getAsString();
+					}
+
+					for(int j = 0; j < bC.getBlockSize(); j++){
+						ops.add(requestJson.getAsJsonObject("op" + j));
+					}
+
+					if(ops.get(0) == null){
+						value = new ArrayList<operation>();
+					}
+					else{
+						value = convertJsonToOp(ops);
+					}
+
 				} catch (Exception e){
-					System.err.println("Failed to parse Json received");
+					System.err.println("Failed to extract arguments from Json payload");
 					System.err.println(e.getMessage());
 				}
 
-				boolean integrityCheck = auxF.checkIntegrity(hmac, requestJson);
+				auxF.sendAck(socket, messageFromServer);
 
-				if(!integrityCheck){
-					System.err.println("Integrity violated");
+				for(int k = 0; k < values.size(); k++){
+					for(int j = 0; j < bC.getBlockSize(); j++){
+					}
 				}
-				else{
-					try{
-						List<JsonObject> ops = new ArrayList<JsonObject>(bC.getBlockSize());
-						{
-							messageType = requestJson.get("messageType").getAsString();
-							instance = requestJson.get("instance").getAsString();
-							idMainProcess = requestJson.get("idMainProcess").getAsString();
-						}
 
-						for(int j = 0; j < bC.getBlockSize(); j++){
-							ops.add(requestJson.getAsJsonObject("op" + j));
-						}
+				System.out.println(8000 + Integer.parseInt(idMainProcess));
 
-						if(ops.get(0) == null){
-							value = new ArrayList<operation>();
-						}
-						else{
-							value = convertJsonToOp(ops);
-						}
-
-					} catch (Exception e){
-						System.err.println("Failed to extract arguments from Json payload");
-						System.err.println(e.getMessage());
-					}
-
-					auxF.sendAck(socket, messageFromServer);
-
-					for(int k = 0; k < values.size(); k++){
-						for(int j = 0; j < bC.getBlockSize(); j++){
-						}
-					}
-
-					System.out.println(8000 + Integer.parseInt(idMainProcess));
-
-					// If consensus instance is expected
-					if(Integer.parseInt(instance) == instanceNumber){
-						// If we receive message type expected
-						List<operation> entry = null; 	//entry = key in which we added another vote
-						if (messageType.equals(type.toString())){
-							// Add to list of received
-							for (List<operation> key : values.keySet()) {
-								System.out.println(values.get(key));
-								if(compareLists(key, value)){
-									if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess)))
-										values.get(key).add(8000 + Integer.parseInt(idMainProcess));
-									entry = key;
-								}
+				// If consensus instance is expected
+				if(Integer.parseInt(instance) == instanceNumber){
+					// If we receive message type expected
+					List<operation> entry = null; 	//entry = key in which we added another vote
+					if (messageType.equals(type.toString())){
+						// Add to list of received
+						for (List<operation> key : values.keySet()) {
+							System.out.println(values.get(key));
+							if(compareLists(key, value)){
+								if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess)))
+									values.get(key).add(8000 + Integer.parseInt(idMainProcess));
+								entry = key;
 							}
-							//if vote didnt match any existing key
-							if(entry == null){
-								values.put(value, new ArrayList<Integer>());
-								values.get(value).add(8000 + Integer.parseInt(idMainProcess));
-								entry = value;
-							}
+						}
+						//if vote didnt match any existing key
+						if(entry == null){
+							values.put(value, new ArrayList<Integer>());
+							values.get(value).add(8000 + Integer.parseInt(idMainProcess));
+							entry = value;
+						}
 
-							// If we reached consensus
-							if(values.get(entry).size() >= consensusNumber){
-								System.out.printf("Agreed on value for type " + type + "\n");
-								return value;
-							}
+						// If we reached consensus
+						if(values.get(entry).size() >= consensusNumber){
+							System.out.printf("Agreed on value for type " + type + "\n");
+							return value;
 						}
 					}
 				}
+			
 			}catch(Exception e){
 				System.err.println("Failed in message");
 				System.err.println(e.getMessage());
@@ -194,7 +247,7 @@ public class IBFT_Functions{
 	}
 
 	public void sendMessageToAll(message_type type, List<operation> valueToSend, List<Integer> serverPorts,
-						Integer port, DatagramSocket socket, Integer consensusNumber, Integer instanceNumber){
+						Integer port, DatagramSocket socket, Integer consensusNumber, Integer instanceNumber, String myPriv){
 
 		InetAddress serverToSend = null;
 
@@ -247,31 +300,59 @@ public class IBFT_Functions{
 					System.err.println("Failed to create Json and arguments");
 					System.err.println(e.getMessage());
 				}
-
-				//Create hmac to assure integrity
-				byte[] hmac = null;
-				try{
-					hmac = auxF.digest(message.toString().getBytes(auxF.UTF_8), "SHA3-256");
-				}catch (IllegalArgumentException e){
-					System.err.println("Failed to hash value");
-					System.err.println(e.getMessage());
-				}
-
-				//ENVIAR HMAC EM BASE 64
-				JsonObject messageWithHMAC = JsonParser.parseString("{}").getAsJsonObject();
-				{
-					messageWithHMAC.addProperty("payload", message.toString());
-					messageWithHMAC.addProperty("hmac", Base64.getEncoder().encodeToString(hmac));
-				}
-
 				String clientData = null;
-				//Encrypt datagram with AES and simetric key
-				try{
-					clientData = auxF.ConvertToSend(messageWithHMAC.toString());
+				//ASSINAR MENSAGEM
+				if(type.equals(message_type.PREPARE)){
+					System.out.println("Voud Assinar");
+					String signature = null;
+					try{
+						signature = auxF.do_RSAEncryption(auxF.digest(message.toString().getBytes(auxF.UTF_8), "SHA3-256").toString()
+															, myPriv);
+					}
+					catch (Exception e){
+						System.err.printf("RSA encryption failed\n");
+						System.err.println(e.getMessage());
+					}
+			
+					JsonObject messageToSend = JsonParser.parseString("{}").getAsJsonObject();
+					{
+						messageToSend.addProperty("payload", message.toString());
+						messageToSend.addProperty("signature", signature);
+					}
+			
+					try{
+						clientData = auxF.ConvertToSend(messageToSend.toString());
+					}
+					catch (Exception e){
+						System.err.printf("Error parsing message\n");
+						System.err.println(e.getMessage());
+					}
 				}
-				catch (Exception e){
-					System.err.printf("Error in message parsing\n");
-					System.err.println(e.getMessage());
+				else{
+					//Create hmac to assure integrity
+					byte[] hmac = null;
+					try{
+						hmac = auxF.digest(message.toString().getBytes(auxF.UTF_8), "SHA3-256");
+					}catch (IllegalArgumentException e){
+						System.err.println("Failed to hash value");
+						System.err.println(e.getMessage());
+					}
+
+					//ENVIAR HMAC EM BASE 64
+					JsonObject messageWithHMAC = JsonParser.parseString("{}").getAsJsonObject();
+					{
+						messageWithHMAC.addProperty("payload", message.toString());
+						messageWithHMAC.addProperty("hmac", Base64.getEncoder().encodeToString(hmac));
+					}
+
+					//Encrypt datagram with AES and simetric key
+					try{
+						clientData = auxF.ConvertToSend(messageWithHMAC.toString());
+					}
+					catch (Exception e){
+						System.err.printf("Error in message parsing\n");
+						System.err.println(e.getMessage());
+					}
 				}
 
 				//Create datagram

@@ -86,7 +86,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
                     }
                 } catch (SocketTimeoutException e) {
                     //expected ack was not received
-                    System.err.println("Did not receive ack during timeout duration, will retransmit message");
                     timeout += 1000;
                     
                 }

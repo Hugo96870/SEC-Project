@@ -6,7 +6,8 @@ public class operation{
 
     enum operation_type{
         TRANSFER,
-        CREATE;
+        CREATE,
+        BALANCE;
     }
 
     operation_type identifier;
@@ -14,6 +15,7 @@ public class operation{
     PublicKey destination;
     Integer amount;
     Integer port;
+    String mode;
 
     public operation(String identifier, PublicKey source, PublicKey destination, Integer amount, Integer port){
         this.identifier = operation_type.TRANSFER;
@@ -21,6 +23,7 @@ public class operation{
         this.destination = destination;
         this.amount = amount;
         this.port = port;
+        this.mode = null;
     }
 
     public operation(String identifier, PublicKey source, Integer port){
@@ -29,6 +32,15 @@ public class operation{
         this.destination = null;
         this.amount = null;
         this.port = port;
+        this.mode = null;
+    }
+    public operation(String identifier, PublicKey source, Integer port, String mode){
+        this.identifier = operation_type.BALANCE;
+        this.source = source;
+        this.destination = null;
+        this.amount = null;
+        this.port = port;
+        this.mode = mode;
     }
 
     public PublicKey getSource(){
@@ -67,7 +79,11 @@ public class operation{
     }
 
     public Integer getPort(){
-        return this.port;
+        return port;
+    }
+
+    public String getMode(){
+        return mode;
     }
 
 }
