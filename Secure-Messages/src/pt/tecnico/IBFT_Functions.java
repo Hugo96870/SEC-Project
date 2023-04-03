@@ -107,6 +107,8 @@ public class IBFT_Functions{
 					System.err.println(e.getMessage());
 				}
 				JsonObject requestJson = null;
+
+				//Prepare messages are digitally signed 
 				if(type.equals(message_type.PREPARE)){
 					//Parse Json with payload and hmac
 					JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
@@ -146,13 +148,13 @@ public class IBFT_Functions{
 						byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
 						String hashString = new String(payloadHash, "UTF-8");
 						hashString.equals(signatureReceived);
-						System.out.println("AASINATURA BOAAAAAAAAAAAAA");
 					}catch (Exception e){
 						System.err.println("Error in assymetric decryption");
 						System.err.println(e.getMessage());
 						System.exit(1);
 					}
 				}
+				//Others aren't
 				else{
 					//Parse Json with payload and hmac
 					JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
@@ -219,13 +221,22 @@ public class IBFT_Functions{
 						for (List<operation> key : values.keySet()) {
 							System.out.println(values.get(key));
 							if(compareLists(key, value)){
-								if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess)))
+								if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess))){
+									//Add vote to blockChain list of prepared value for this round
+									if(type.toString().equals("PREPARE")){
+										bC.addPrepareToRound(bC.getRound(), messageFromServer);
+									}
 									values.get(key).add(8000 + Integer.parseInt(idMainProcess));
+								}
 								entry = key;
 							}
 						}
 						//if vote didnt match any existing key
 						if(entry == null){
+							//Add vote to blockChain list of prepared value for this round
+							if(type.toString().equals("PREPARE")){
+								bC.addPrepareToRound(bC.getRound(), messageFromServer);
+							}
 							values.put(value, new ArrayList<Integer>());
 							values.get(value).add(8000 + Integer.parseInt(idMainProcess));
 							entry = value;
@@ -301,9 +312,8 @@ public class IBFT_Functions{
 					System.err.println(e.getMessage());
 				}
 				String clientData = null;
-				//ASSINAR MENSAGEM
+				//Prepare messages need to be digitally signed
 				if(type.equals(message_type.PREPARE)){
-					System.out.println("Voud Assinar");
 					String signature = null;
 					try{
 						signature = auxF.do_RSAEncryption(auxF.digest(message.toString().getBytes(auxF.UTF_8), "SHA3-256").toString()
@@ -328,6 +338,7 @@ public class IBFT_Functions{
 						System.err.println(e.getMessage());
 					}
 				}
+				//Other doesn't
 				else{
 					//Create hmac to assure integrity
 					byte[] hmac = null;

@@ -6,6 +6,8 @@ import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Map;
+
+import java.net.DatagramPacket;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
@@ -50,6 +52,11 @@ public class blockChain{
 
     PublicKey pubMiner;
 
+    //List of every prepared value by round
+    Map<Integer, List<DatagramPacket>> preparesByRound;
+
+    Integer round;
+
     public blockChain(){
         nrPorts = 4;
 
@@ -63,6 +70,7 @@ public class blockChain{
         instanceNumber = 0;
         accounts = new HashMap<PublicKey, Double>();
         operations = new ArrayList<operation>();
+        preparesByRound = new HashMap<Integer, List<DatagramPacket>>();
         try{
             byte[] publicKeyBytes = Files.readAllBytes(Paths.get(keyPathPublicMiner));
             X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
@@ -74,6 +82,11 @@ public class blockChain{
         }
 
         accounts.put(pubMiner, startBalance);
+        round = 0;
+    }
+
+    public Integer getRound(){
+        return round;
     }
 
     public Integer getBlockSize(){
@@ -158,6 +171,21 @@ public class blockChain{
         for(PublicKey key: accounts.keySet()){
             System.out.println("Conta: " + key);
             System.out.println("Saldo: " + accounts.get(key));
+        }
+    }
+
+    public List<DatagramPacket> getPreparesByRound(Integer round){
+        return preparesByRound.get(round);
+    }
+
+    //Add vote to blockChain list of prepared value for some round
+    public void addPrepareToRound(Integer round, DatagramPacket packet){
+        if(preparesByRound.get(round) == null){
+            preparesByRound.put(round, new ArrayList<DatagramPacket>());
+            preparesByRound.get(round).add(packet);
+        }
+        else{
+            preparesByRound.get(round).add(packet);
         }
     }
 }
