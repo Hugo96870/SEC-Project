@@ -142,7 +142,6 @@ public class IBFT_Functions{
 							pathToKey = keyPathPublicServer3;
 							break;
 					}
-			
 					try{
 						String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, pathToKey);
 						byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
@@ -211,6 +210,8 @@ public class IBFT_Functions{
 				}
 
 				System.out.println(8000 + Integer.parseInt(idMainProcess));
+				System.out.println(instanceNumber);
+				System.out.println(instance);
 
 				// If consensus instance is expected
 				if(Integer.parseInt(instance) == instanceNumber){

@@ -35,10 +35,9 @@ public class SecureServer {
 	private static final String keyPathPriv3 = "keys/serverPriv3.der";
 
 	private static void respondToPendingProcesses(List<operation> block, List<operation> valueDecided, blockChain bC, String path,
-														DatagramSocket socket, List<operation> strongReadsQueue, Integer port){
+														DatagramSocket socket, Integer port, List<DatagramPacket> signatures){
 
 		String response;
-		String responseToRead = null;
 
 		if(ibft_f.compareLists(block, valueDecided)){
 			response = "OK";
@@ -49,7 +48,7 @@ public class SecureServer {
 
 		if(response.equals("OK")){
 			System.out.println("All good");
-			bC.executeBlock(block);
+			bC.executeBlock(block, signatures);
 			response = "OK";
 		}
 		else{
@@ -60,16 +59,6 @@ public class SecureServer {
 
 		for(operation opera: block){
 			sendMessageToClient(path, socket, response, port, opera.getPort());
-		}
-
-		for(operation oper: strongReadsQueue){
-			if(bC.check_balance(oper.getSource()) == null){
-				responseToRead = "Account doesn't exist";
-			}
-			else{
-				responseToRead = bC.check_balance(oper.getSource()).toString();
-			}
-			sendMessageToClient(path, socket, responseToRead, port, oper.getPort());
 		}
 	}
 
@@ -399,6 +388,7 @@ public class SecureServer {
 		Map<List<operation>, List<Integer>> commitValues = new HashMap<List<operation>, List<Integer>>();
 
 		receivePrePrepare(socket, leaderPort, bC.getInstance(), bC);
+		bC.increaseInstance();
 
 		List<operation> op = new ArrayList<operation>();
 
@@ -407,20 +397,22 @@ public class SecureServer {
 		prepareValues.put(op, new ArrayList<Integer>());
 		prepareValues.get(op).add(port);
 
-		ibft_f.waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE, socket, bC.getInstance(), bC);
+		List<operation> valueDecidedPREPARE = ibft_f.waitForQuorum(prepareValues, consensusNumber, message_type.PREPARE,
+					socket, bC.getInstance(), bC);
 
 		ibft_f.sendMessageToAll(message_type.COMMIT, op, serverports, port, socket, consensusNumber, bC.getInstance(), path);
 
 		commitValues.put(op, new ArrayList<Integer>());
 		commitValues.get(op).add(port);
 
-		List<operation> valueDecided= ibft_f.waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket, bC.getInstance(), bC);
+		List<operation> valueDecidedCOMMIT = ibft_f.waitForQuorum(commitValues, consensusNumber, message_type.COMMIT,
+					socket, bC.getInstance(), bC);
 
-		if(valueDecided.isEmpty()){
+		if(!ibft_f.compareLists(valueDecidedPREPARE, valueDecidedCOMMIT)){
 			return null;
 		}
 
-		return valueDecided;
+		return valueDecidedCOMMIT;
 	}
 
 	//Byzantine process tries to send PrePrepare even though he is not the leader and doesnt respect Prepare and Commit messages
@@ -467,6 +459,7 @@ public class SecureServer {
 		Map<List<operation>, List<Integer>> commitValues = new HashMap<List<operation>, List<Integer>>();
 
 		receivePrePrepare(socket, leaderPort, bC.getInstance(), bC);
+		bC.increaseInstance();
 
 		List<operation> op = new ArrayList<operation>();
 
@@ -508,9 +501,6 @@ public class SecureServer {
 			return;
 		}
 
-		//Pending reads
-		List<operation> strongReadsQueue = new ArrayList<operation>();
-
 		//Parse arguments
 		final Integer port = Integer.parseInt(args[0]);
 		final String serverType = args[1];
@@ -525,6 +515,9 @@ public class SecureServer {
 		// Create server socket
 		DatagramSocket socket = new DatagramSocket(port);
 		System.out.printf("Server will receive packets on port %d %n", port);
+
+		//List of signatures
+		List<DatagramPacket> signatures = new ArrayList<DatagramPacket>();
 
 		//Thread that receives inputs
 		List<DatagramPacket> requests = new ArrayList<>();
@@ -583,41 +576,7 @@ public class SecureServer {
 					path = keyPathPriv3;
 					break;
 			}
-
-			//Operation is a read
-			if(op.getID().toString().equals("BALANCE") && op.getMode().equals("strong")){
-				Boolean doNow = true;
-				for(operation oper: block){
-					if(oper.getID().toString().equals("TRANSFER")){
-						if(oper.getDestination().equals(op.getSource()) || oper.getSource().equals(op.getSource())){
-							strongReadsQueue.add(op);
-							System.out.println("Não fazer agora");
-							doNow = false;
-							break;
-						}
-					}
-					else{
-						if(oper.getSource().equals(op.getSource())){
-							strongReadsQueue.add(op);
-							System.out.println("Não fazer agora");
-							doNow = false;
-							break;
-						}
-					}
-				}
-				if(doNow){
-					System.out.println("Vou responder JÁ");
-					String responseToClient = null;
-					if(bC.check_balance(op.getSource()) == null){
-						responseToClient = "Account doesn't exist";
-					}
-					else{
-						responseToClient = bC.check_balance(op.getSource()).toString();
-					}
-					sendMessageToClient(path, socket, responseToClient, port, op.getPort());
-				}
-			}
-			/*
+			
 			if(op.getID().toString().equals("BALANCE") && op.getMode().equals("strong")){
 				String responseToClient = null;
 				if(bC.check_balance(op.getSource()) == null){
@@ -628,10 +587,10 @@ public class SecureServer {
 				}
 				sendMessageToClient(path, socket, responseToClient, port, op.getPort());
 			}
-			*/
 			else{
 				//If op is type CREATE or TRANSFER wait till block is full to run consensus
 				block.add(op);
+				signatures.add(clientPacket);
 
 				if(((Integer)block.size()).equals(bC.getBlockSize())){
 					switch(serverType){
@@ -644,13 +603,14 @@ public class SecureServer {
 							//Run consensus algorythm
 							valueDecided = leaderConsensus(socket, bC.getConsensusMajority(), block, bC.getPorts(), port, bC, path);
 
-							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, port, signatures);
 	
 							bC.printState();
 	
 							block.clear();
+
+							signatures.clear();
 	
-							strongReadsQueue.clear();
 							break;
 						case "NORMAL":
 							System.out.println("Im a normal server");
@@ -658,13 +618,14 @@ public class SecureServer {
 							valueDecided = normalConsensus(socket, bC.getConsensusMajority(), bC.getLeaderPort(),
 										bC.getPorts(), port, bC, path);
 	
-							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, port, signatures);
 	
 							bC.printState();
 	
 							block.clear();
+
+							signatures.clear();
 	
-							strongReadsQueue.clear();
 							break;
 						case "B_PC":
 							// Caso o processo seja bizantino e não respeite o valor as mensagens COMMIT e PREPARE
@@ -672,26 +633,28 @@ public class SecureServer {
 							valueDecided = byzantineProcessPC(socket, bC.getConsensusMajority(), bC.getLeaderPort(),	
 										bC.getPorts(), port, bC, path);
 
-							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, port, signatures);
 
 							bC.printState();
 
 							block.clear();
 
-							strongReadsQueue.clear();
+							signatures.clear();
+
 							break;
 						case "B_PP":
 							// Caso o processo seja bizantino e não respeite as mensagens PREPREPARE e o valor dos COMMITs e PREPAREs
 							//Run consensus algorythm
 							valueDecided = byzantineProcessPP(socket, bC.getConsensusMajority(), bC.getLeaderPort(),
 										bC.getPorts(), port, bC, path);
-							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, port, signatures);
 
 							bC.printState();
 
 							block.clear();
 
-							strongReadsQueue.clear();
+							signatures.clear();
+
 							break;
 						case "B_PC_T":
 							// Caso o processo seja bizantino e envie várias vezes PREPARE E COMMIT fora de ordem
@@ -699,13 +662,14 @@ public class SecureServer {
 							valueDecided = byzantineProcessPCT(socket, bC.getConsensusMajority(), bC.getLeaderPort(),
 										bC.getPorts(), port, bC, path);
 
-							respondToPendingProcesses(block, valueDecided, bC, path, socket, strongReadsQueue, port);
+							respondToPendingProcesses(block, valueDecided, bC, path, socket, port, signatures);
 
 							bC.printState();
 
 							block.clear();
 
-							strongReadsQueue.clear();
+							signatures.clear();
+
 							break;
 					}
 				}

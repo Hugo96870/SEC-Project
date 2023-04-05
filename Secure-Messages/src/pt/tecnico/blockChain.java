@@ -48,7 +48,7 @@ public class blockChain{
 
     Map<PublicKey, Double> accounts;
 
-    List<operation> operations;
+    Map<operation, DatagramPacket> operations;
 
     PublicKey pubMiner;
 
@@ -69,7 +69,7 @@ public class blockChain{
         consensusMajority = (nrPorts + (nrPorts-1)/3)/2 + 1;
         instanceNumber = 0;
         accounts = new HashMap<PublicKey, Double>();
-        operations = new ArrayList<operation>();
+        operations = new HashMap<operation, DatagramPacket>();
         preparesByRound = new HashMap<Integer, List<DatagramPacket>>();
         try{
             byte[] publicKeyBytes = Files.readAllBytes(Paths.get(keyPathPublicMiner));
@@ -150,18 +150,20 @@ public class blockChain{
     }
 
     //Execute every operation in the block received
-    public List<operation> executeBlock(List<operation> block){
+    public Map<operation, DatagramPacket> executeBlock(List<operation> block, List<DatagramPacket> signatures){
+        int counter = 0;
         for(operation op: block){
             if(op.getID().equals(operation_type.CREATE)){
                 if(create_account(op.getSource())){
-                    operations.add(op);
+                    operations.put(op, signatures.get(counter));
                 }
             }
             else{
                 if(transfer(op.getSource(), op.getDestination(), op.getAmount())){
-                    operations.add(op);
+                    operations.put(op, signatures.get(counter));
                 }
             }
+            counter++;
         }
 
         return this.operations;
