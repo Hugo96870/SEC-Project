@@ -2,8 +2,11 @@ package pt.tecnico;
 
 import java.net.*;
 import java.util.Base64;
+import java.util.HashMap;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.security.PublicKey;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -22,10 +25,10 @@ public class IBFT_Functions{
 	 * protocol, is 65,507 bytes (65,535 − 8 byte UDP header − 20 byte IP header.
 	 */
 
-	 private final static String keyPathPublicServer = "keys/serverPub.der";
-	 private final static String keyPathPublicServer1 = "keys/serverPub1.der";
-	 private final static String keyPathPublicServer2 = "keys/serverPub2.der";
-	 private final static String keyPathPublicServer3 = "keys/serverPub3.der";
+	 public final static String keyPathPublicServer = "keys/serverPub.der";
+	 public final static String keyPathPublicServer1 = "keys/serverPub1.der";
+	 public final static String keyPathPublicServer2 = "keys/serverPub2.der";
+	 public final static String keyPathPublicServer3 = "keys/serverPub3.der";
 
 	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
 
@@ -43,6 +46,20 @@ public class IBFT_Functions{
 	}
 
 	public message_type mT;
+
+	public Map<PublicKey, Double> convertJsonToMap(List<JsonObject> accs){
+
+		Map<PublicKey, Double> valueReturn = new HashMap<PublicKey, Double>();
+
+		for(int j = 0; j < accs.size(); j++){
+			PublicKey pK = auxF.convertStrToPK(accs.get(j).get("key").getAsString());
+			Double balance = Double.parseDouble(accs.get(j).get("balance").getAsString());
+
+			valueReturn.put(pK, balance);
+		}
+
+		return valueReturn;
+	}
 
 	public List<operation> convertJsonToOp(List<JsonObject> ops){
 

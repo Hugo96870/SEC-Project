@@ -190,4 +190,8 @@ public class blockChain{
             preparesByRound.get(round).add(packet);
         }
     }
+
+    public Map<PublicKey, Double> getAccounts(){
+        return accounts;
+    }
 }
