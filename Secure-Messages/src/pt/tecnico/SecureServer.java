@@ -23,7 +23,8 @@ public class SecureServer {
 
 	private static auxFunctions auxF = new auxFunctions();
 	private static IBFT_Functions ibft_f = new IBFT_Functions();
-	//private static byzantineBehaviours byzB = new byzantineBehaviours(ibft_f);
+
+	private static final Integer snapshotPeriod = 2;
 
 	//Key paths
 	private final static String keyPathPubAlice = "keys/userPub.der";
@@ -501,6 +502,8 @@ public class SecureServer {
 			return;
 		}
 
+		Map<Map<PublicKey, Double>,DatagramPacket> snapshot = new HashMap<Map<PublicKey, Double>,DatagramPacket>();
+
 		//Parse arguments
 		final Integer port = Integer.parseInt(args[0]);
 		final String serverType = args[1];
@@ -587,6 +590,16 @@ public class SecureServer {
 				}
 				sendMessageToClient(path, socket, responseToClient, port, op.getPort());
 			}
+			else if(op.getID().toString().equals("BALANCE") && op.getMode().equals("weak")){
+				String responseToClient = null;
+				if(bC.check_balance(op.getSource()) == null){
+					responseToClient = "Account doesn't exist";
+				}
+				else{
+					responseToClient = bC.check_balance(op.getSource()).toString();
+				}
+				sendMessageToClient(path, socket, responseToClient, port, op.getPort());
+			}
 			else{
 				//If op is type CREATE or TRANSFER wait till block is full to run consensus
 				block.add(op);
@@ -604,7 +617,7 @@ public class SecureServer {
 							valueDecided = leaderConsensus(socket, bC.getConsensusMajority(), block, bC.getPorts(), port, bC, path);
 
 							respondToPendingProcesses(block, valueDecided, bC, path, socket, port, signatures);
-	
+
 							bC.printState();
 	
 							block.clear();

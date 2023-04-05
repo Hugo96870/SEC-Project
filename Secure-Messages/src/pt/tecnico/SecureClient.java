@@ -41,82 +41,85 @@ public class SecureClient {
 
 	public static String createRequestMessage(Integer port){
 
-		System.out.print("> ");
-		while (!scanner.hasNextLine()) {
-			// wait for input
-		}
-		String line = scanner.nextLine();
-		String cmd = line.split(SPACE)[0];
 		JsonObject requestJson;
-		String keySource = null, keyDestination = null, path = null;
-		PublicKey publickey = null;
+		while(true){
+			System.out.print("> ");
+			while (!scanner.hasNextLine()) {
+				// wait for input
+			}
+			String line = scanner.nextLine();
+			String cmd = line.split(SPACE)[0];
+			String keySource = null, keyDestination = null, path = null;
+			PublicKey publickey = null;
 
-		switch (cmd) {
-			case("CREATE"):
-				path = keyByUser.get(line.split(SPACE)[1]);
-				publickey = auxF.getPublicKey(path);
+			switch (cmd) {
+				case("CREATE"):
+					path = keyByUser.get(line.split(SPACE)[1]);
+					publickey = auxF.getPublicKey(path);
 
-				try{
-					keySource = Base64.getEncoder().encodeToString(publickey.getEncoded());
-				} catch(Exception e){
-					System.err.println("Error converting key");
-					System.err.println(e.getMessage());
-				}
+					try{
+						keySource = Base64.getEncoder().encodeToString(publickey.getEncoded());
+					} catch(Exception e){
+						System.err.println("Error converting key");
+						System.err.println(e.getMessage());
+					}
 
-				requestJson = JsonParser.parseString("{}").getAsJsonObject();
-				{
-					requestJson.addProperty("type", cmd);
-					requestJson.addProperty("port", port.toString());
-					requestJson.addProperty("pubKey", keySource);
-				}
+					requestJson = JsonParser.parseString("{}").getAsJsonObject();
+					{
+						requestJson.addProperty("type", cmd);
+						requestJson.addProperty("port", port.toString());
+						requestJson.addProperty("pubKey", keySource);
+					}
 
-				break;
-			case("TRANSFER"):
-				String pathS = keyByUser.get(line.split(SPACE)[1]);
-				PublicKey publicKeyS = auxF.getPublicKey(pathS);
-				String pathD = keyByUser.get(line.split(SPACE)[2]);
-				PublicKey publicKeyD = auxF.getPublicKey(pathD);
+					break;
+				case("TRANSFER"):
+					String pathS = keyByUser.get(line.split(SPACE)[1]);
+					PublicKey publicKeyS = auxF.getPublicKey(pathS);
+					String pathD = keyByUser.get(line.split(SPACE)[2]);
+					PublicKey publicKeyD = auxF.getPublicKey(pathD);
 
-				try{
-					keySource = Base64.getEncoder().encodeToString(publicKeyS.getEncoded());
-					keyDestination = Base64.getEncoder().encodeToString(publicKeyD.getEncoded());
-				} catch(Exception e){
-					System.err.println("Error converting key");
-					System.err.println(e.getMessage());
-				}
+					try{
+						keySource = Base64.getEncoder().encodeToString(publicKeyS.getEncoded());
+						keyDestination = Base64.getEncoder().encodeToString(publicKeyD.getEncoded());
+					} catch(Exception e){
+						System.err.println("Error converting key");
+						System.err.println(e.getMessage());
+					}
 
-				requestJson = JsonParser.parseString("{}").getAsJsonObject();
-				{
-					requestJson.addProperty("type", cmd);
-					requestJson.addProperty("source", keySource);
-					requestJson.addProperty("dest", keyDestination);
-					requestJson.addProperty("amount", line.split(SPACE)[3]);
-					requestJson.addProperty("port", port.toString());
-				}
-				break;
-			case("BALANCE"):
-				path = keyByUser.get(line.split(SPACE)[1]);
-				publickey = auxF.getPublicKey(path);
-				String mode = line.split(SPACE)[2];
+					requestJson = JsonParser.parseString("{}").getAsJsonObject();
+					{
+						requestJson.addProperty("type", cmd);
+						requestJson.addProperty("source", keySource);
+						requestJson.addProperty("dest", keyDestination);
+						requestJson.addProperty("amount", line.split(SPACE)[3]);
+						requestJson.addProperty("port", port.toString());
+					}
+					break;
+				case("BALANCE"):
+					path = keyByUser.get(line.split(SPACE)[1]);
+					publickey = auxF.getPublicKey(path);
+					String mode = line.split(SPACE)[2];
 
-				try{
-					keySource = Base64.getEncoder().encodeToString(publickey.getEncoded());
-				} catch(Exception e){
-					System.err.println("Error converting key");
-					System.err.println(e.getMessage());
-				}
+					try{
+						keySource = Base64.getEncoder().encodeToString(publickey.getEncoded());
+					} catch(Exception e){
+						System.err.println("Error converting key");
+						System.err.println(e.getMessage());
+					}
 
-				requestJson = JsonParser.parseString("{}").getAsJsonObject();
-				{
-					requestJson.addProperty("type", cmd);
-					requestJson.addProperty("port", port.toString());
-					requestJson.addProperty("pubKey", keySource);
-					requestJson.addProperty("mode", mode);
-				}
-				break;
-			default:
-				requestJson = null;
-				break;
+					requestJson = JsonParser.parseString("{}").getAsJsonObject();
+					{
+						requestJson.addProperty("type", cmd);
+						requestJson.addProperty("port", port.toString());
+						requestJson.addProperty("pubKey", keySource);
+						requestJson.addProperty("mode", mode);
+					}
+					break;
+				default:
+					System.out.println("Invalid command. Please try again.");
+					continue;
+			}
+			break;
 		}
 		// Create request message
 
