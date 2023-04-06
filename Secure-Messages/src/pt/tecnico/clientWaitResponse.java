@@ -126,16 +126,22 @@ public class clientWaitResponse implements Callable<Integer> {
 			List<JsonObject> accs = new ArrayList<JsonObject>();
 
 			int j = 0;
-			while(JsonReceived.getAsJsonObject("acc" + j) != null){
-				accs.add(JsonReceived.getAsJsonObject("acc" + j));
-				j++;
+			if(JsonReceived.toString().equals("{}")){
+				lastSnapShot = null;
+				lastSnapShotJson = null;
 			}
-
-			if(accs.get(0) != null)
-				infoReceived = IBFT_Functions.convertJsonToMap(accs);
-
-			lastSnapShot = infoReceived;
-			lastSnapShotJson = JsonReceived;
+			else{
+				while(JsonReceived.getAsJsonObject("acc" + j) != null){
+					accs.add(JsonReceived.getAsJsonObject("acc" + j));
+					j++;
+				}
+	
+				if(accs.get(0) != null)
+					infoReceived = IBFT_Functions.convertJsonToMap(accs);
+	
+				lastSnapShot = infoReceived;
+				lastSnapShotJson = JsonReceived;
+			}
 
 			return signatures;
 		}
@@ -186,45 +192,55 @@ public class clientWaitResponse implements Callable<Integer> {
 
 					Boolean verifiedSignatures = true;
 
-					for(String signture: responseSplit){
-						byte[] payloadHash = auxF.digest(lastSnapShotJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
-						String hashString = new String(payloadHash, "UTF-8");
-						try{
-							String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer);
-							hashString.equals(signatureReceived);
-						}catch(Exception e){
+					if(lastSnapShot != null){
+						for(String signture: responseSplit){
+							byte[] payloadHash = auxF.digest(lastSnapShotJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
+							String hashString = new String(payloadHash, "UTF-8");
 							try{
-								String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer1);
+								String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer);
 								hashString.equals(signatureReceived);
-							}catch(Exception exc){
+							}catch(Exception e){
 								try{
-									String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer2);
+									String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer1);
 									hashString.equals(signatureReceived);
-								}catch(Exception excep){
+								}catch(Exception exc){
 									try{
-										String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer3);
+										String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer2);
 										hashString.equals(signatureReceived);
-									}catch(Exception exception){
-										verifiedSignatures = false;
-										System.err.println("Signature Invalid");
+									}catch(Exception excep){
+										try{
+											String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer3);
+											hashString.equals(signatureReceived);
+										}catch(Exception exception){
+											verifiedSignatures = false;
+											System.err.println("Signature Invalid");
+										}
 									}
 								}
 							}
 						}
+						if(responseSplit.length >= consensusNumber && verifiedSignatures){
+							Double value = lastSnapShot.get(myPub);
+	
+							// Close socket
+							socket.close();
+					
+							System.out.printf("Received Balance: %s \n", value);
+	
+							return 0;
+						}
+						else{
+							System.out.printf("Received response that was invalid\n");
+							return 1;
+						}
 					}
-					if(responseSplit.length >= consensusNumber && verifiedSignatures){
-						Double value = lastSnapShot.get(myPub);
-
+					else{
 						// Close socket
 						socket.close();
 				
-						System.out.printf("Received Balance: %s \n", value);
+						System.out.println("Received Balance: Account doesnt exist");
 
 						return 0;
-					}
-					else{
-						System.out.printf("Received response that was invalid");
-						return 1;
 					}
 				}
 			}catch(Exception e){

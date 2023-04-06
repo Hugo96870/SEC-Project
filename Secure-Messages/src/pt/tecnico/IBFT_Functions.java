@@ -135,7 +135,7 @@ public class IBFT_Functions{
 								counter++;
 								if(counter.equals(snapshot.size())){
 									signatures.add(signatureEncrypted);
-									if(((Integer)signatures.size()).equals(consensusMajority)){
+									if(((Integer)signatures.size()).equals(bC.getNrPorts())){
 										System.out.println("Got a quorum of snapshiot signatures");
 										return signatures;
 									}

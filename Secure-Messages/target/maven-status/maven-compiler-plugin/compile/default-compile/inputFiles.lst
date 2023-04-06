@@ -1,5 +1,9 @@
 /mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/SecureClient.java
-/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/test/java/MyTests.java
+/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/operation.java
 /mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/SecureServer.java
 /mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/sendAndReceiveAck.java
+/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/auxFunctions.java
+/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/blockChain.java
 /mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/receiveString.java
+/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/clientWaitResponse.java
+/mnt/c/Users/Hugo/ProjetosIST/SEC/SEC-Project/Secure-Messages/src/pt/tecnico/IBFT_Functions.java

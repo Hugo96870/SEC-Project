@@ -643,6 +643,7 @@ public class SecureServer {
 			}
 			else if(op.getID().toString().equals("BALANCE") && op.getMode().equals("weak")){
 				System.out.println("Received a weak read, responding from snapshot");
+				System.out.println(snapshot);
 				JsonObject toSend = ibft_f.convertMapIntoJson(snapshot);
 				sendSnapshotToClient(path, socket, toSend, port, op.getPort(), snapShotSigntures);
 			}
@@ -710,9 +711,14 @@ public class SecureServer {
 
 					signatures.clear();
 
-					snapshot = bC.getAccounts();
-
 					if(bC.getInstance() % snapshotPeriod == 0){
+						Map<PublicKey, Double> accounts = bC.getAccounts();
+
+						snapshot.clear();
+
+						for(PublicKey key: accounts.keySet()){
+							snapshot.put(key, accounts.get(key));
+						}
 						snapShotSigntures = ibft_f.doSnapshot(snapshot, path, port, bC.getPorts(), bC, socket);
 					}
 				}
