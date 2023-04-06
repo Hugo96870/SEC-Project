@@ -21,9 +21,9 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
     private static auxFunctions auxF = new auxFunctions();
 
-    DatagramPacket packetToSend;
-    Integer portToSend;
-    Integer myPort;
+    private DatagramPacket packetToSend;
+    private Integer portToSend;
+    private Integer myPort;
 
     public sendAndReceiveAck(DatagramPacket packet, Integer port, Integer myPort){
         packetToSend = packet;

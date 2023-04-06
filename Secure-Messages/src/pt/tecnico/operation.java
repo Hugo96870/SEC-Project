@@ -10,12 +10,12 @@ public class operation{
         BALANCE;
     }
 
-    operation_type identifier;
-    PublicKey source;
-    PublicKey destination;
-    Integer amount;
-    Integer port;
-    String mode;
+    private operation_type identifier;
+    private PublicKey source;
+    private PublicKey destination;
+    private Integer amount;
+    private Integer port;
+    private String mode;
 
     //Constructor for TRANSFER operation
     public operation(String identifier, PublicKey source, PublicKey destination, Integer amount, Integer port){

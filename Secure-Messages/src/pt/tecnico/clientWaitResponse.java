@@ -23,14 +23,12 @@ public class clientWaitResponse implements Callable<Integer> {
 
 	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
 
-	private static IBFT_Functions ibft_f = new IBFT_Functions();
-
 	/* Buffer size for receiving a UDP packet. */
 	private final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
-    Integer myPort;
+    private Integer myPort;
 
-    Integer consensusNumber;
+    private Integer consensusNumber;
 
     private static auxFunctions auxF;
 
@@ -49,7 +47,7 @@ public class clientWaitResponse implements Callable<Integer> {
 		myPub = pubKey;
     }
 
-    public static String parseReceivedMessage(DatagramPacket serverPacket, Integer weakReadFlag){
+    private static String parseReceivedMessage(DatagramPacket serverPacket, Integer weakReadFlag){
 
 		String clientText = null;
 		try{
@@ -134,7 +132,7 @@ public class clientWaitResponse implements Callable<Integer> {
 			}
 
 			if(accs.get(0) != null)
-				infoReceived = ibft_f.convertJsonToMap(accs);
+				infoReceived = IBFT_Functions.convertJsonToMap(accs);
 
 			lastSnapShot = infoReceived;
 			lastSnapShotJson = JsonReceived;

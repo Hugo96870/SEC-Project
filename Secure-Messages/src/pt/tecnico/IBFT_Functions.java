@@ -33,9 +33,9 @@ public class IBFT_Functions{
 	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
 
 	/** Buffer size for receiving a UDP packet. */
-	private final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
+	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
-	public byte[] buf = new byte[BUFFER_SIZE];
+	public static byte[] buf = new byte[BUFFER_SIZE];
 
 	private static auxFunctions auxF = new auxFunctions();
 
@@ -47,7 +47,210 @@ public class IBFT_Functions{
 
 	public message_type mT;
 
-	public Map<PublicKey, Double> convertJsonToMap(List<JsonObject> accs){
+		public static List<String> waitSnapshot(Map<PublicKey, Double> snapshot, String signature,
+						Integer consensusMajority, DatagramSocket socket, blockChain bC){
+
+		System.out.println("Waiting for quorum of snapshiot signatures");
+		List<String> signatures = new ArrayList<String>();
+
+		signatures.add(signature);
+
+		DatagramPacket messageFromServer = new DatagramPacket(buf, buf.length);
+
+		String signatureReceived = null;
+
+		while(true){
+			try{
+				socket.receive(messageFromServer);
+
+				String clientText = null;
+		
+				try{
+					clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(messageFromServer.getData()),
+						messageFromServer.getLength());
+				}
+				catch(Exception e){
+					System.err.println("Message conversion failed");
+					System.err.println(e.getMessage());
+				}
+
+				JsonObject requestJson = null;
+
+				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
+				String receivedFromJson = null, signatureEncrypted = null, idMainProcess = null;
+				{
+					receivedFromJson = received.get("payload").getAsString();
+					signatureEncrypted = received.get("signature").getAsString();
+					idMainProcess = received.get("idMainProcess").getAsString();
+				}
+				// Parse JSON and extract arguments
+				try{
+					requestJson = JsonParser.parseString(receivedFromJson).getAsJsonObject();
+				} catch (Exception e){
+					System.err.println("Failed to parse Json received");
+					System.err.println(e.getMessage());
+				}
+				String pathToKey = null;
+				switch(idMainProcess){
+					case "0":
+						pathToKey = IBFT_Functions.keyPathPublicServer;
+						break;
+					case "1":
+						pathToKey = IBFT_Functions.keyPathPublicServer1;
+						break;
+					case "2":
+						pathToKey = IBFT_Functions.keyPathPublicServer2;
+						break;
+					case "3":
+						pathToKey = IBFT_Functions.keyPathPublicServer3;
+						break;
+				}
+				try{
+					signatureReceived = auxF.do_RSADecryption(signatureEncrypted, pathToKey);
+					byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
+					String hashString = new String(payloadHash, "UTF-8");
+					hashString.equals(signatureReceived);
+				}catch (Exception e){
+					System.err.println("Error in assymetric decryption");
+					System.err.println(e.getMessage());
+					System.exit(1);
+				}
+				try{
+					List<JsonObject> accs = new ArrayList<JsonObject>();
+
+					Map<PublicKey, Double> valueReceived = new HashMap<PublicKey, Double>();
+
+					for(int j = 0; j < bC.getAccounts().size(); j++){
+						accs.add(requestJson.getAsJsonObject("acc" + j));
+					}
+
+					if(accs.get(0) != null)
+						valueReceived = convertJsonToMap(accs);
+
+					Integer counter = 0;
+
+					for(PublicKey myKey: snapshot.keySet()){
+						for(PublicKey keyReceived: valueReceived.keySet()){
+							if(myKey.equals(keyReceived) && snapshot.get(myKey).equals(valueReceived.get(keyReceived))){
+								counter++;
+								if(counter.equals(snapshot.size())){
+									signatures.add(signatureEncrypted);
+									if(((Integer)signatures.size()).equals(consensusMajority)){
+										System.out.println("Got a quorum of snapshiot signatures");
+										return signatures;
+									}
+								}
+								break;
+							}
+						}
+					}
+
+				} catch (Exception e){
+					System.err.println("Failed to extract arguments from Json payload");
+				}
+					
+
+			} catch (Exception e){
+				System.err.println("Error parsing arguments");
+			}
+		}
+	}
+
+	public List<String> doSnapshot(Map<PublicKey, Double> snapshot, String path, Integer port,
+									List<Integer> serverPorts, blockChain bC, DatagramSocket socket){
+
+		InetAddress serverToSend = null;
+		try{
+			serverToSend = InetAddress.getByName("localhost");
+		}catch (Exception e){
+			System.err.printf("Cant resolve host\n");
+			System.err.println(e.getMessage());
+		}
+
+		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
+		Integer counter = 0;
+		for(PublicKey key: snapshot.keySet()){
+			JsonObject jsonObject = new JsonObject();
+			jsonObject.addProperty("key", Base64.getEncoder().encodeToString(key.getEncoded()));
+			jsonObject.addProperty("balance", snapshot.get(key).toString());
+			requestJson.add("acc" + counter, jsonObject);
+			counter++;
+		}
+
+		String signature = null;
+		try{
+			signature = auxF.do_RSAEncryption(auxF.digest(requestJson.toString().getBytes(auxF.UTF_8), "SHA3-256").toString(), path);
+		}
+		catch (Exception e){
+			System.err.printf("RSA encryption failed\n");
+			System.err.println(e.getMessage());
+		}
+
+		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			message.addProperty("payload", requestJson.toString());
+			message.addProperty("signature", signature);
+			message.addProperty("idMainProcess", ((Integer)(port % 8000)).toString());
+		}
+		String clientData = null;
+		try{
+			clientData = auxF.ConvertToSend(message.toString());
+		}
+		catch (Exception e){
+			System.err.printf("Error parsing message\n");
+			System.err.println(e.getMessage());
+		}
+
+		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
+		List<sendAndReceiveAck> myThreads = new ArrayList<>();
+		for(int i = 0; i < serverPorts.size(); i++){
+			if(!port.equals(serverPorts.get(i))){
+				Integer portToSend = serverPorts.get(i);
+
+				//Create datagram
+				DatagramPacket packet = null;
+				try{
+					packet = new DatagramPacket(Base64.getDecoder().decode(clientData),
+					Base64.getDecoder().decode(clientData).length, serverToSend, portToSend);
+				} catch (Exception e){
+					System.err.println("Failed to create Datagram");
+					System.err.println(e.getMessage());
+				}
+
+				myThreads.add(new sendAndReceiveAck(packet, serverPorts.get(i), 0));
+			}
+		}
+
+		try{
+			for(int i = 0; i < serverPorts.size() - 1; i++){
+				executorService.submit(myThreads.get(i));
+			}
+		}catch(Exception e){
+			System.err.println("Error launching threads");
+			System.err.println(e.getMessage());
+		}
+
+		System.out.println("Sent snapshot signed to every server");
+
+		return waitSnapshot(snapshot, signature, bC.getConsensusMajority(), socket, bC);
+	}
+
+	public JsonObject convertMapIntoJson(Map<PublicKey, Double> snapshot){
+
+		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
+		Integer counter = 0;
+		for(PublicKey key: snapshot.keySet()){
+			JsonObject jsonObject = new JsonObject();
+			jsonObject.addProperty("key", Base64.getEncoder().encodeToString(key.getEncoded()));
+			jsonObject.addProperty("balance", snapshot.get(key).toString());
+			requestJson.add("acc" + counter, jsonObject);
+			counter++;
+		}
+
+		return requestJson;
+	}
+
+	public static Map<PublicKey, Double> convertJsonToMap(List<JsonObject> accs){
 
 		Map<PublicKey, Double> valueReturn = new HashMap<PublicKey, Double>();
 

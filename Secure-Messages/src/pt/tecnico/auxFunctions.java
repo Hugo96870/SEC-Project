@@ -24,6 +24,14 @@ public class auxFunctions {
 
     public final Charset UTF_8 = StandardCharsets.UTF_8;
 
+    public boolean verifySignature(String signatureEncrypted, String pathToKey, String receivedFromJson) throws Exception{
+
+        String signatureReceived = do_RSADecryption(signatureEncrypted, pathToKey);
+        byte[] payloadHash = digest(receivedFromJson.toString().getBytes(UTF_8), "SHA3-256");
+        String hashString = new String(payloadHash, "UTF-8");
+        return hashString.equals(signatureReceived);
+    }
+
     //Encrypt data with private key and RSA
     public String do_RSAEncryption(String plainText, String path) throws Exception
     {

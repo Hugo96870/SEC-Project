@@ -49,19 +49,19 @@ public class blockChain{
     private Integer consensusMajority;
 
     //Map with accounts and its balance
-    Map<PublicKey, Double> accounts;
+    private Map<PublicKey, Double> accounts;
 
     //Map with operations and its signature
-    Map<operation, DatagramPacket> operations;
+    private Map<operation, DatagramPacket> operations;
 
-    PublicKey pubMiner;
+    private PublicKey pubMiner;
 
     //List of every prepared value by round
-    Map<Integer, List<DatagramPacket>> preparesByRound;
+    private Map<Integer, List<DatagramPacket>> preparesByRound;
 
-    auxFunctions auxF = new auxFunctions();
+    private auxFunctions auxF = new auxFunctions();
 
-    Integer round;
+    private Integer round;
 
     public blockChain(){
         nrPorts = 4;

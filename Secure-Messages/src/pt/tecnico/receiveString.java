@@ -23,9 +23,9 @@ public class receiveString implements Callable<Void> {
 
     private static auxFunctions auxF = new auxFunctions();
 
-    List<DatagramPacket> requests = new ArrayList<>();
-    Integer port;
-    BlockingQueue<DatagramPacket> queue = new LinkedBlockingQueue<>();
+    private List<DatagramPacket> requests = new ArrayList<>();
+    private Integer port;
+    private BlockingQueue<DatagramPacket> queue = new LinkedBlockingQueue<>();
 
     public receiveString(List<DatagramPacket> requests,Integer port, BlockingQueue<DatagramPacket> queue){
         this.requests = requests;
