@@ -142,21 +142,6 @@ public class clientWaitResponse implements Callable<Integer> {
 			return signatures;
 		}
 	}
-
-
-	/*Decryption function with secret key */
-    public static String ConvertReceived(String cipherText, int lenght) throws Exception
-    {
-		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
-
-		byte[] finalCipherText = new byte[lenght];
-		System.arraycopy(ciphertextBytes, 0, finalCipherText, 0, lenght);
-
-		// Convert the decrypted byte array to a string
-		String clientText = new String(finalCipherText, "UTF-8");
-
-		return clientText;
-    }
     
     @Override
     public Integer call() throws Exception {
@@ -194,9 +179,7 @@ public class clientWaitResponse implements Callable<Integer> {
 					if(receivedResponses.get(body).size() >= consensusNumber){
 						// Close socket
 						socket.close();
-				
 						System.out.printf("Received quorum of responses: %s \n", body);
-
 						return 0;
 					}
 				}
@@ -211,22 +194,18 @@ public class clientWaitResponse implements Callable<Integer> {
 						try{
 							String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer);
 							hashString.equals(signatureReceived);
-							System.out.println("é server 1");
 						}catch(Exception e){
 							try{
 								String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer1);
 								hashString.equals(signatureReceived);
-								System.out.println("é server 2");
 							}catch(Exception exc){
 								try{
 									String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer2);
 									hashString.equals(signatureReceived);
-									System.out.println("é server 3");
 								}catch(Exception excep){
 									try{
 										String signatureReceived = auxF.do_RSADecryption(signture, keyPathPublicServer3);
 										hashString.equals(signatureReceived);
-										System.out.println("é server 4");
 									}catch(Exception exception){
 										verifiedSignatures = false;
 										System.err.println("Signature Invalid");

@@ -113,7 +113,6 @@ public class SecureServer {
 					byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
 					String hashString = new String(payloadHash, "UTF-8");
 					hashString.equals(signatureReceived);
-					System.out.println("Assinatura verificada");
 				}catch (Exception e){
 					System.err.println("Error in assymetric decryption");
 					System.err.println(e.getMessage());
@@ -252,7 +251,6 @@ public class SecureServer {
 		}
 
 		if(response.equals("OK")){
-			System.out.println("All good");
 			bC.executeBlock(block, signatures);
 			response = "OK";
 		}
@@ -412,9 +410,9 @@ public class SecureServer {
 
 				if(!integrityCheck){
 					System.err.println("Integrity violated");
+					System.exit(1);
 				}
 				else{
-					System.out.println("Integrity checked");
 					String messageType = null, instance = null, idMainProcess = null;
 					List<JsonObject> ops = new ArrayList<JsonObject>(bC.getBlockSize());
 					{
@@ -474,8 +472,6 @@ public class SecureServer {
 		//wait for commit quorum
 		List<operation> valueDecided = ibft_f.waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket, bC.getInstance(), bC);
 
-		System.out.println("Already decidded");
-
 		if(!ibft_f.compareLists(valueAgreed, valueDecided)){
 			System.out.println("Values prepare and commit not equal");
 			return null;
@@ -514,8 +510,6 @@ public class SecureServer {
 
 		//wait for commit quorum
 		List<operation> valueDecided = ibft_f.waitForQuorum(commitValues, consensusNumber, message_type.COMMIT, socket, bC.getInstance(), bC);
-
-		System.out.println("Already decidded");
 
 		if(!ibft_f.compareLists(valueAgreed, valueDecided)){
 			System.out.println("Values prepare and commit not equal");
@@ -645,9 +639,6 @@ public class SecureServer {
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 
 		executor.submit(callable);
-
-		System.out.printf("Response packet sent to %s:%d! and received ack \n", hostToSend, clientPort);
-
 	}
 
 	//Byzantine process doesnt respect Prepare and Commit values
@@ -808,7 +799,6 @@ public class SecureServer {
 			try{
 				while(flag.equals(0)){
 					clientPacket = queue.take();
-					System.out.println("Received message from client");
 					flag = 1;
 				}
 			} catch (Exception e){
@@ -851,6 +841,7 @@ public class SecureServer {
 			}
 			
 			if(op.getID().toString().equals("BALANCE") && op.getMode().equals("strong")){
+				System.out.println("Received a strong read, responding from blockChain");
 				String responseToClient = null;
 				if(bC.check_balance(op.getSource()) == null){
 					responseToClient = "Account doesn't exist";
@@ -918,6 +909,7 @@ public class SecureServer {
 	
 							break;
 						case "B_PC":
+							System.out.println("Im byzantine");
 							// Caso o processo seja bizantino e não respeite o valor as mensagens COMMIT e PREPARE
 							//Run consensus algorythm
 							valueDecided = byzantineProcessPC(socket, bC.getConsensusMajority(), bC.getLeaderPort(),	
@@ -939,6 +931,7 @@ public class SecureServer {
 
 							break;
 						case "B_PP":
+							System.out.println("Im byzantine");
 							// Caso o processo seja bizantino e não respeite as mensagens PREPREPARE e o valor dos COMMITs e PREPAREs
 							//Run consensus algorythm
 							valueDecided = byzantineProcessPP(socket, bC.getConsensusMajority(), bC.getLeaderPort(),
@@ -959,6 +952,7 @@ public class SecureServer {
 
 							break;
 						case "B_PC_T":
+							System.out.println("Im byzantine");
 							// Caso o processo seja bizantino e envie várias vezes PREPARE E COMMIT fora de ordem
 							//Run consensus algorythm
 							valueDecided = byzantineProcessPCT(socket, bC.getConsensusMajority(), bC.getLeaderPort(),

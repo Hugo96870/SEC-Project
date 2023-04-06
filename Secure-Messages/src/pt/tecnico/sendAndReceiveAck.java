@@ -19,6 +19,8 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
 	private static byte[] buf = new byte[BUFFER_SIZE];
 
+    private static auxFunctions auxF = new auxFunctions();
+
     DatagramPacket packetToSend;
     Integer portToSend;
     Integer myPort;
@@ -27,21 +29,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
         packetToSend = packet;
         portToSend = port;
         this.myPort = myPort;
-    }
-
-
-	/*Decryption function with secret key */
-    public static String ConvertReceived(String cipherText, int lenght) throws Exception
-    {
-		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
-
-		byte[] finalCipherText = new byte[lenght];
-		System.arraycopy(ciphertextBytes, 0, finalCipherText, 0, lenght);
-
-		// Convert the decrypted byte array to a string
-		String clientText = new String(finalCipherText, "UTF-8");
-
-		return clientText;
     }
     
     @Override
@@ -72,7 +59,7 @@ public class sendAndReceiveAck implements Callable<Integer> {
                     DatagramPacket ackDatagram = new DatagramPacket(buf, buf.length);
                     socket.receive(ackDatagram);
 
-                    String clientText = ConvertReceived(Base64.getEncoder().encodeToString(ackDatagram.getData()), ackDatagram.getLength());
+                    String clientText = auxF.ConvertReceived(Base64.getEncoder().encodeToString(ackDatagram.getData()), ackDatagram.getLength());
 
                     // Parse JSON and extract arguments
                     JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
@@ -86,11 +73,12 @@ public class sendAndReceiveAck implements Callable<Integer> {
                         System.out.println("Received ack from this server: " + portToSend);
                         ackReceived = true;
                     }
+                    //Expected ack was not received
                     else{
                         timeout += 1000;
                     }
                 } catch (SocketTimeoutException e) {
-                    //expected ack was not received
+                    //Expected ack was not received
                     timeout += 1000;
                 }
             }

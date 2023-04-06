@@ -226,10 +226,6 @@ public class IBFT_Functions{
 					}
 				}
 
-				System.out.println(8000 + Integer.parseInt(idMainProcess));
-				System.out.println(instanceNumber);
-				System.out.println(instance);
-
 				// If consensus instance is expected
 				if(Integer.parseInt(instance) == instanceNumber){
 					// If we receive message type expected
@@ -237,7 +233,6 @@ public class IBFT_Functions{
 					if (messageType.equals(type.toString())){
 						// Add to list of received
 						for (List<operation> key : values.keySet()) {
-							System.out.println(values.get(key));
 							if(compareLists(key, value)){
 								if(!values.get(key).contains(8000 + Integer.parseInt(idMainProcess))){
 									//Add vote to blockChain list of prepared value for this round
@@ -407,5 +402,7 @@ public class IBFT_Functions{
 			System.err.println("Error launching threads");
 			System.err.println(e.getMessage());
 		}
+
+		System.out.println("Sent message to all");
 	}
 }

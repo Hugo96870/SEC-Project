@@ -17,6 +17,7 @@ public class operation{
     Integer port;
     String mode;
 
+    //Constructor for TRANSFER operation
     public operation(String identifier, PublicKey source, PublicKey destination, Integer amount, Integer port){
         this.identifier = operation_type.TRANSFER;
         this.source = source;
@@ -25,7 +26,7 @@ public class operation{
         this.port = port;
         this.mode = null;
     }
-
+    //Constructor for CREATE operation
     public operation(String identifier, PublicKey source, Integer port){
         this.identifier = operation_type.CREATE;
         this.source = source;
@@ -34,6 +35,7 @@ public class operation{
         this.port = port;
         this.mode = null;
     }
+    //Constructor for BALANCE operation
     public operation(String identifier, PublicKey source, Integer port, String mode){
         this.identifier = operation_type.BALANCE;
         this.source = source;
@@ -59,6 +61,7 @@ public class operation{
         return identifier;
     }
 
+    //Return class into String
     public String toString(){
         if(this.identifier.equals(operation_type.CREATE)){
             return this.identifier.toString() + " " + this.source.toString();
@@ -68,6 +71,7 @@ public class operation{
         }
     }
 
+    //Compare two operations
     public boolean equals(operation op){
         if(op.getID().equals(operation_type.CREATE)){
             return this.identifier.toString().equals(op.identifier.toString()) && this.source.equals(op.source);

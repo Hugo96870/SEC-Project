@@ -14,7 +14,6 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import com.google.gson.JsonObject;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import javax.crypto.SecretKey;
 
 import java.io.File;
 import java.net.DatagramPacket;
@@ -25,48 +24,7 @@ public class auxFunctions {
 
     public final Charset UTF_8 = StandardCharsets.UTF_8;
 
-    public auxFunctions(){}
-
-    public String do_Encryption(String plainText, SecretKey key) throws Exception
-    {
-        // Load the secret key from the .key file
-        // Convert the string to be encrypted to a byte array
-        byte[] plaintextBytes = plainText.getBytes("UTF-8");
-
-        // Create an instance of the Cipher class using the AES algorithm and initialize it with the secret key
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.ENCRYPT_MODE, key);
-
-        // Use the Cipher object to encrypt the byte array
-        byte[] ciphertextBytes = cipher.doFinal(plaintextBytes);
-
-        // Encode the encrypted byte array to Base64 encoding
-        String ciphertext = Base64.getEncoder().encodeToString(ciphertextBytes);
-
-        return ciphertext;
-    }
-
-    public String do_Decryption(String cipherText, SecretKey key, int lenght) throws Exception
-    {
-        byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
-
-        byte[] finalCipherText = new byte[lenght];
-        System.arraycopy(ciphertextBytes, 0, finalCipherText, 0, lenght);
-
-        // Create an instance of the Cipher class using the AES algorithm and initialize it with the secret key
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, key);
-
-        // Use the Cipher object to decrypt the byte array
-        byte[] plaintextBytes = cipher.doFinal(finalCipherText);
-
-        // Convert the decrypted byte array to a string
-        String plaintext = new String(plaintextBytes, "UTF-8");
-
-        return plaintext;
-    }
-
-	/*Encryption function using RSA algorithm */
+    //Encrypt data with private key and RSA
     public String do_RSAEncryption(String plainText, String path) throws Exception
     {
 
@@ -92,6 +50,7 @@ public class auxFunctions {
 		return ciphertext;
     }
 
+    //Decrypt data with public key and RSA
     public String do_RSADecryption(String cipherText, String path) throws Exception
     {
         // Load the public key from the .key file
@@ -116,6 +75,7 @@ public class auxFunctions {
 		return plaintext;
     }
 
+    //Sends ack to host that sent the packet
     public void sendAck(DatagramSocket socket, DatagramPacket packet){
 		// Create request message
 		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
@@ -138,6 +98,7 @@ public class auxFunctions {
 		}
 	}
 
+    //Function that converts data to be processed by the program
     public String ConvertToSend(String plainText) throws Exception
     {
 		// Convert the string to be encrypted to a byte array
@@ -149,7 +110,7 @@ public class auxFunctions {
 		return clientDataToSend;
     }
 
-	/*Decryption function with secret key */
+	//Function that converts data to be sent through a socket
     public String ConvertReceived(String cipherText, int lenght) throws Exception
     {
 		byte[] ciphertextBytes = Base64.getDecoder().decode(cipherText);
@@ -163,6 +124,7 @@ public class auxFunctions {
 		return clientText;
     }
 
+    //Function that returns hash from a byte sequence
     public byte[] digest(byte[] input, String algorithm) {
         MessageDigest md;
         try {
@@ -174,8 +136,8 @@ public class auxFunctions {
         return result;
 	}
 
+    //Verify integrity comparing received hmac with Json hmac
     public boolean checkIntegrity(String hmac, JsonObject requestJson){
-		//Verify integrity with hmac
 		byte[] hmacToCheck = null;
 		try{
 			hmacToCheck = digest(requestJson.toString().getBytes(UTF_8), "SHA3-256");
@@ -190,6 +152,7 @@ public class auxFunctions {
 		return false;
 	}
 
+    //Get Public key from path
     public PublicKey getPublicKey(String path){
         
         File file = new File(path);
@@ -207,6 +170,7 @@ public class auxFunctions {
         return publicKey;
     }
 
+    //Convert String encoded in Base64 into Public Key
     public PublicKey convertStrToPK(String key){
 
         byte[] keyByte = Base64.getDecoder().decode(key);

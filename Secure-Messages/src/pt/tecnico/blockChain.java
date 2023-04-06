@@ -1,15 +1,11 @@
 package pt.tecnico;
 
 import java.util.List;
-import java.security.KeyFactory;
 import java.security.PublicKey;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Map;
 
 import java.net.DatagramPacket;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 
 import pt.tecnico.operation.operation_type;
 
@@ -26,14 +22,18 @@ public class blockChain{
         B_PP;
 	}
 
+    public server_type sT;
+
+    //Path to miner's public key
     private final static String keyPathPublicMiner = "keys/serverPub.der";
 
+    //Initial account balance
     private final Double startBalance = 100.0;
+
     private final Integer blockSize = 5;
 
+    //Miner tax from every transaction
     private Double minerTax = 0.05;
-
-    public server_type sT;
 
     //Number of servers
     private Integer nrPorts;
@@ -41,19 +41,25 @@ public class blockChain{
     private Integer leaderPort;
 
     private List<Integer> serverPorts;
+
     //Number of current instance
 	private static Integer instanceNumber;
+
     //Number to achieve consensus
     private Integer consensusMajority;
 
+    //Map with accounts and its balance
     Map<PublicKey, Double> accounts;
 
+    //Map with operations and its signature
     Map<operation, DatagramPacket> operations;
 
     PublicKey pubMiner;
 
     //List of every prepared value by round
     Map<Integer, List<DatagramPacket>> preparesByRound;
+
+    auxFunctions auxF = new auxFunctions();
 
     Integer round;
 
@@ -71,15 +77,8 @@ public class blockChain{
         accounts = new HashMap<PublicKey, Double>();
         operations = new HashMap<operation, DatagramPacket>();
         preparesByRound = new HashMap<Integer, List<DatagramPacket>>();
-        try{
-            byte[] publicKeyBytes = Files.readAllBytes(Paths.get(keyPathPublicMiner));
-            X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
-            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-            pubMiner = keyFactory.generatePublic(keySpec);
-        }catch(Exception e){
-            System.err.println("Account miner error");
-            System.err.println(e.getMessage());
-        }
+
+        pubMiner = auxF.getPublicKey(keyPathPublicMiner);
 
         accounts.put(pubMiner, startBalance);
         round = 0;

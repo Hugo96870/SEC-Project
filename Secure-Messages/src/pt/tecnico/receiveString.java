@@ -21,6 +21,8 @@ public class receiveString implements Callable<Void> {
 
 	private static byte[] buf = new byte[BUFFER_SIZE];
 
+    private static auxFunctions auxF = new auxFunctions();
+
     List<DatagramPacket> requests = new ArrayList<>();
     Integer port;
     BlockingQueue<DatagramPacket> queue = new LinkedBlockingQueue<>();
@@ -29,17 +31,6 @@ public class receiveString implements Callable<Void> {
         this.requests = requests;
         this.port = port;
         this.queue = queue;
-    }
-
-    public static String ConvertToSend(String plainText) throws Exception
-    {
-		// Convert the string to be encrypted to a byte array
-		byte[] plaintextBytes = plainText.getBytes("UTF-8");
-
-		// Encode the encrypted byte array to Base64 encoding
-		String clientDataToSend = Base64.getEncoder().encodeToString(plaintextBytes);
-
-		return clientDataToSend;
     }
     
     @Override
@@ -64,7 +55,7 @@ public class receiveString implements Callable<Void> {
                 message.addProperty("value", "ack");
             }
 
-            String clientDataToSend = ConvertToSend(message.toString());
+            String clientDataToSend = auxF.ConvertToSend(message.toString());
 
             DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
             Base64.getDecoder().decode(clientDataToSend).length, clientPacket.getAddress(), clientPacket.getPort());
