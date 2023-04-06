@@ -35,8 +35,25 @@ public class SecureServer {
 	private static final String keyPathPriv2 = "keys/serverPriv2.der";
 	private static final String keyPathPriv3 = "keys/serverPriv3.der";
 
+	public static JsonObject convertMapIntoJson(Map<PublicKey, Double> snapshot){
+
+		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
+		Integer counter = 0;
+		for(PublicKey key: snapshot.keySet()){
+			JsonObject jsonObject = new JsonObject();
+			jsonObject.addProperty("key", Base64.getEncoder().encodeToString(key.getEncoded()));
+			jsonObject.addProperty("balance", snapshot.get(key).toString());
+			requestJson.add("acc" + counter, jsonObject);
+			counter++;
+		}
+
+		return requestJson;
+	}
+
 	public static List<String> waitSnapshot(Map<PublicKey, Double> snapshot, String signature,
 						Integer consensusMajority, DatagramSocket socket, blockChain bC){
+
+		System.out.println("Waiting for quorum of snapshiot signatures");
 		List<String> signatures = new ArrayList<String>();
 
 		signatures.add(signature);
@@ -59,13 +76,15 @@ public class SecureServer {
 					System.err.println("Message conversion failed");
 					System.err.println(e.getMessage());
 				}
+
 				JsonObject requestJson = null;
 
 				JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
-				String receivedFromJson = null, signatureEncrypted = null;
+				String receivedFromJson = null, signatureEncrypted = null, idMainProcess = null;
 				{
 					receivedFromJson = received.get("payload").getAsString();
 					signatureEncrypted = received.get("signature").getAsString();
+					idMainProcess = received.get("idMainProcess").getAsString();
 				}
 				// Parse JSON and extract arguments
 				try{
@@ -73,10 +92,6 @@ public class SecureServer {
 				} catch (Exception e){
 					System.err.println("Failed to parse Json received");
 					System.err.println(e.getMessage());
-				}
-				String idMainProcess = null;
-				{
-					idMainProcess = requestJson.get("idMainProcess").getAsString();
 				}
 				String pathToKey = null;
 				switch(idMainProcess){
@@ -98,6 +113,7 @@ public class SecureServer {
 					byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
 					String hashString = new String(payloadHash, "UTF-8");
 					hashString.equals(signatureReceived);
+					System.out.println("Assinatura verificada");
 				}catch (Exception e){
 					System.err.println("Error in assymetric decryption");
 					System.err.println(e.getMessage());
@@ -122,8 +138,9 @@ public class SecureServer {
 							if(myKey.equals(keyReceived) && snapshot.get(myKey).equals(valueReceived.get(keyReceived))){
 								counter++;
 								if(counter.equals(snapshot.size())){
-									signatures.add(signatureReceived);
+									signatures.add(signatureEncrypted);
 									if(((Integer)signatures.size()).equals(consensusMajority)){
+										System.out.println("Got a quorum of snapshiot signatures");
 										return signatures;
 									}
 								}
@@ -164,8 +181,6 @@ public class SecureServer {
 			counter++;
 		}
 
-		requestJson.addProperty("idMainProcess", ((Integer)(port % 8000)).toString());
-
 		String signature = null;
 		try{
 			signature = auxF.do_RSAEncryption(auxF.digest(requestJson.toString().getBytes(auxF.UTF_8), "SHA3-256").toString(), path);
@@ -179,6 +194,7 @@ public class SecureServer {
 		{
 			message.addProperty("payload", requestJson.toString());
 			message.addProperty("signature", signature);
+			message.addProperty("idMainProcess", ((Integer)(port % 8000)).toString());
 		}
 		String clientData = null;
 		try{
@@ -192,7 +208,6 @@ public class SecureServer {
 		ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
 		List<sendAndReceiveAck> myThreads = new ArrayList<>();
 		for(int i = 0; i < serverPorts.size(); i++){
-			//We dont send message to ourselves, only assume we sent and received it
 			if(!port.equals(serverPorts.get(i))){
 				Integer portToSend = serverPorts.get(i);
 
@@ -218,6 +233,8 @@ public class SecureServer {
 			System.err.println("Error launching threads");
 			System.err.println(e.getMessage());
 		}
+
+		System.out.println("Sent snapshot signed to every server");
 
 		return waitSnapshot(snapshot, signature, bC.getConsensusMajority(), socket, bC);
 	}
@@ -558,6 +575,71 @@ public class SecureServer {
 
 		System.out.println("Going to send response to " + clientPort);
 		
+		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, clientPort, 0);
+
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+
+		executor.submit(callable);
+	}
+
+	//Sends encrypted message to client confirming the string appended
+	public static void sendSnapshotToClient(String keyPathPriv, DatagramSocket socket,
+								JsonObject toSend, Integer port, int clientPort, List<String> signatures){
+		/* ------------------------------------- Consenso atingido, Enviar mensagem ao cliente ------------------------------ */
+
+		String concatenatedSignature = "";
+
+		for(String signature: signatures){
+			concatenatedSignature += signature;
+			concatenatedSignature += " ";
+		}
+
+		// Create response message
+		JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			responseJson.addProperty("signatures", concatenatedSignature);
+			responseJson.add("state", toSend);
+		}
+
+		String signatureEncrypted = null;
+		try{
+			signatureEncrypted = auxF.do_RSAEncryption(auxF.digest(responseJson.toString().getBytes(auxF.UTF_8),
+									"SHA3-256").toString(), keyPathPriv);
+		}
+		catch (Exception e){
+			System.err.printf("RSA encryption failed\n");
+			System.err.println(e.getMessage());
+		}
+
+		JsonObject message = JsonParser.parseString("{}").getAsJsonObject();
+		{
+			message.addProperty("payload", responseJson.toString());
+			message.addProperty("signature", signatureEncrypted);
+		}
+
+		String dataToSend = null;
+		try{
+			dataToSend = auxF.ConvertToSend(message.toString());
+		}
+		catch (Exception e){
+			System.err.printf("Error parsing\n");
+			System.err.println(e.getMessage());
+		}
+
+		// Create Datagram Packet
+		InetAddress hostToSend = null;
+		try{
+			hostToSend = InetAddress.getByName("localhost");
+		}catch (Exception e){
+			System.err.printf("Cant resolve host\n");
+			System.err.println(e.getMessage());
+		}
+
+		DatagramPacket serverPacket = new DatagramPacket( Base64.getDecoder().decode(dataToSend),
+						Base64.getDecoder().decode(dataToSend).length, hostToSend, clientPort);
+
+		System.out.println("Going to send response to " + clientPort);
+		
 		Callable<Integer> callable = new sendAndReceiveAck(serverPacket, clientPort, port + 4000);
 
 		ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -779,14 +861,9 @@ public class SecureServer {
 				sendMessageToClient(path, socket, responseToClient, port, op.getPort());
 			}
 			else if(op.getID().toString().equals("BALANCE") && op.getMode().equals("weak")){
-				String responseToClient = null;
-				if(snapshot.get(op.getSource()) == null){
-					responseToClient = "Account doesn't exist";
-				}
-				else{
-					responseToClient = snapshot.get(op.getSource()).toString();
-				}
-				sendMessageToClient(path, socket, responseToClient, port, op.getPort());
+				System.out.println("Received a weak read, responding from snapshot");
+				JsonObject toSend = convertMapIntoJson(snapshot);
+				sendSnapshotToClient(path, socket, toSend, port, op.getPort(), snapShotSigntures);
 			}
 			else{
 				//If op is type CREATE or TRANSFER wait till block is full to run consensus
@@ -833,6 +910,8 @@ public class SecureServer {
 
 							signatures.clear();
 
+							snapshot = bC.getAccounts();
+
 							if(bC.getInstance() % snapshotPeriod == 0){
 								snapShotSigntures = doSnapshot(snapshot, path, port, bC.getPorts(), bC, socket);
 							}
@@ -852,6 +931,8 @@ public class SecureServer {
 
 							signatures.clear();
 
+							snapshot = bC.getAccounts();
+
 							if(bC.getInstance() % snapshotPeriod == 0){
 								snapShotSigntures = doSnapshot(snapshot, path, port, bC.getPorts(), bC, socket);
 							}
@@ -869,6 +950,8 @@ public class SecureServer {
 							block.clear();
 
 							signatures.clear();
+
+							snapshot = bC.getAccounts();
 
 							if(bC.getInstance() % snapshotPeriod == 0){
 								snapShotSigntures = doSnapshot(snapshot, path, port, bC.getPorts(), bC, socket);
@@ -888,6 +971,8 @@ public class SecureServer {
 							block.clear();
 
 							signatures.clear();
+
+							snapshot = bC.getAccounts();
 
 							if(bC.getInstance() % snapshotPeriod == 0){
 								snapShotSigntures = doSnapshot(snapshot, path, port, bC.getPorts(), bC, socket);

@@ -123,13 +123,14 @@ public class auxFunctions {
 			message.addProperty("value", "ack");
 		}
 		try{
-		String clientDataToSend = ConvertToSend(message.toString());
+            String clientDataToSend = ConvertToSend(message.toString());
 
-		DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
-		Base64.getDecoder().decode(clientDataToSend).length, packet.getAddress(), packet.getPort());
+            DatagramPacket ackPacket = new DatagramPacket(Base64.getDecoder().decode(clientDataToSend),
+            Base64.getDecoder().decode(clientDataToSend).length, packet.getAddress(), packet.getPort());
 
-		//send ack datagram
-		socket.send(ackPacket);
+            //send ack datagram
+            socket.send(ackPacket);
+            System.out.println("Sent ack to: " + packet.getPort());
 
 		} catch (Exception e){
 			System.err.println("Failed to send ack");

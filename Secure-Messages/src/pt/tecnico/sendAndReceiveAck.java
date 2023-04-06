@@ -51,14 +51,19 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
         try{
             DatagramSocket socket = null;
-            if(myPort.equals(0)){
-                socket = new DatagramSocket();
-            }
-            else{
-                socket = new DatagramSocket(myPort);
+            try{
+                if(myPort.equals(0)){
+                    socket = new DatagramSocket();
+                }
+                else{
+                    socket = new DatagramSocket(myPort);
+                }
+            }catch(Exception e){
+                System.err.println(e.getMessage());
             }
             socket.setSoTimeout(timeout);
             boolean ackReceived = false;
+            System.out.printf("Response packet sent to %d!\n", packetToSend.getPort());
             while(!ackReceived){
                 socket.send(packetToSend);
                 try {
@@ -87,7 +92,6 @@ public class sendAndReceiveAck implements Callable<Integer> {
                 } catch (SocketTimeoutException e) {
                     //expected ack was not received
                     timeout += 1000;
-                    
                 }
             }
             socket.close();
@@ -96,5 +100,4 @@ public class sendAndReceiveAck implements Callable<Integer> {
         }
         return 0;
     }
-
 }

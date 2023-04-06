@@ -39,6 +39,8 @@ public class SecureClient {
 	private static Map<String, String> keyByUser = new HashMap<String, String>(); 
 	private static Scanner scanner = new Scanner(System.in);
 
+	private static Integer weakReadNext = 0;
+
 	public static String createRequestMessage(Integer port){
 
 		JsonObject requestJson;
@@ -113,6 +115,9 @@ public class SecureClient {
 						requestJson.addProperty("port", port.toString());
 						requestJson.addProperty("pubKey", keySource);
 						requestJson.addProperty("mode", mode);
+					}
+					if(mode.equals("weak")){
+						weakReadNext = 1;
 					}
 					break;
 				default:
@@ -236,7 +241,6 @@ public class SecureClient {
 		keyByUser.put("Charlie", keyPathPubCharlie);
 
 		while(true){
-
 			Random random = new Random();
 
 			// generate a random number between 49152 and 65535
@@ -244,32 +248,54 @@ public class SecureClient {
 
 			String dataToSend = createRequestMessage(randomNumber);
 
-			ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
-			List<sendAndReceiveAck> myThreads = new ArrayList<>();
-			List<Future<Integer>> future = new ArrayList<>();
-
-			for(int i = 0; i < nrServers; i++){
-				//SendMessagetoAll
+			if(weakReadNext.equals(0)){
+				ExecutorService executorService = Executors.newFixedThreadPool(serverPorts.size());
+				List<sendAndReceiveAck> myThreads = new ArrayList<>();
+				List<Future<Integer>> future = new ArrayList<>();
+				for(int i = 0; i < nrServers; i++){
+					//SendMessagetoAll
+	
+					DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(dataToSend),
+							Base64.getDecoder().decode(dataToSend).length, serverAddress, serverPorts.get(i) + 3000);
+	
+					myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, port + 3));
+				}
+	
+				try{
+					for(int i = 0; i < serverPorts.size(); i++){
+						future.add(executorService.submit(myThreads.get(i)));
+						future.get(i).get();
+					}
+				}catch(Exception e){
+					System.err.println("Error launching threads");
+					System.err.println(e.getMessage());
+				}
+			}
+			else{
+				ExecutorService executorService = Executors.newSingleThreadExecutor();
+				Future<Integer> future;
 
 				DatagramPacket clientPacket = new DatagramPacket(Base64.getDecoder().decode(dataToSend),
-						Base64.getDecoder().decode(dataToSend).length, serverAddress, serverPorts.get(i) + 3000);
+				Base64.getDecoder().decode(dataToSend).length, serverAddress, serverPorts.get(3) + 3000);
 
-				myThreads.add(new sendAndReceiveAck(clientPacket, serverPorts.get(i) + 3000, port + 3));
-			}
-
-			try{
-				for(int i = 0; i < serverPorts.size(); i++){
-					future.add(executorService.submit(myThreads.get(i)));
-					future.get(i).get();
+				sendAndReceiveAck process = new sendAndReceiveAck(clientPacket, serverPorts.get(3) + 3000, port + 3);
+	
+				try{
+					future = executorService.submit(process);
+					future.get();
+				}catch(Exception e){
+					System.err.println("Error launching thread");
+					System.err.println(e.getMessage());
 				}
-			}catch(Exception e){
-				System.err.println("Error launching threads");
-				System.err.println(e.getMessage());
 			}
+
 
 			ExecutorService executorServiceReceive = Executors.newSingleThreadExecutor();
-			executorServiceReceive.submit(new clientWaitResponse(randomNumber, auxF, consensusNumber));
 
+			executorServiceReceive.submit(new clientWaitResponse(randomNumber, auxF, consensusNumber,
+													weakReadNext, auxF.getPublicKey(keyByUser.get(id))));
+
+			weakReadNext = 0;
 		}
 	}
 }
