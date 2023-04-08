@@ -170,8 +170,8 @@ public class blockChain{
 
     public void printState(){
         for(PublicKey key: accounts.keySet()){
-            System.out.println("Conta: " + key);
-            System.out.println("Saldo: " + accounts.get(key));
+            System.out.println("Account: " + key);
+            System.out.println("Balance: " + accounts.get(key));
         }
     }
 

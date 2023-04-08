@@ -47,6 +47,7 @@ public class clientWaitResponse implements Callable<Integer> {
 		myPub = pubKey;
     }
 
+	//Function that receives message and parses it
     private static String parseReceivedMessage(DatagramPacket serverPacket, Integer weakReadFlag){
 
 		String clientText = null;
@@ -57,7 +58,7 @@ public class clientWaitResponse implements Callable<Integer> {
 			System.err.println(e.getMessage());
 		}
 
-		//Parse Json with payload and hmac
+		//Parse Json with payload and digital signature
 		JsonObject received = JsonParser.parseString(clientText).getAsJsonObject();
 		String receivedFromJson = null, signatureEncrypted = null;
 		{
@@ -65,31 +66,20 @@ public class clientWaitResponse implements Callable<Integer> {
 			signatureEncrypted = received.get("signature").getAsString();
 		}
 
+		//Tries verify digital signature with all known server keys
 		try{
-			String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, keyPathPublicServer);
-			byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
-			String hashString = new String(payloadHash, "UTF-8");
-			hashString.equals(signatureReceived);
+			auxF.verifySignature(signatureEncrypted, keyPathPublicServer, receivedFromJson);
 		}catch (Exception e){
 			try{
-				String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, keyPathPublicServer1);
-				byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
-				String hashString = new String(payloadHash, "UTF-8");
-				hashString.equals(signatureReceived);
+				auxF.verifySignature(signatureEncrypted, keyPathPublicServer1, receivedFromJson);
 			}catch (Exception ex){
 				try{
-					String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, keyPathPublicServer2);
-					byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
-					String hashString = new String(payloadHash, "UTF-8");
-					hashString.equals(signatureReceived);
+					auxF.verifySignature(signatureEncrypted, keyPathPublicServer2, receivedFromJson);
 				}catch (Exception exc){
 					try{
-						String signatureReceived = auxF.do_RSADecryption(signatureEncrypted, keyPathPublicServer3);
-						byte[] payloadHash = auxF.digest(receivedFromJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
-						String hashString = new String(payloadHash, "UTF-8");
-						hashString.equals(signatureReceived);
+						auxF.verifySignature(signatureEncrypted, keyPathPublicServer3, receivedFromJson);
 					}catch (Exception exce){
-						System.err.println("Error in assymetric decryption");
+						System.err.println("Error verifying digital signature");
 						System.err.println(exce.getMessage());
 						System.exit(1);
 					}
@@ -106,9 +96,10 @@ public class clientWaitResponse implements Callable<Integer> {
 			System.err.println(e.getMessage());
 		}
 
-		// Parse JSON and extract arguments
+		//If it's a weak read
 		if(weakReadFlag.equals(0)){
 			String body = null;
+			// Parse JSON and extract arguments
 			{
 				body = requestJson.get("body").getAsString();
 			}
@@ -118,6 +109,7 @@ public class clientWaitResponse implements Callable<Integer> {
 			Map<PublicKey, Double> infoReceived = new HashMap<PublicKey, Double>();
 			String signatures = null;
 			JsonObject JsonReceived = null;
+			// Parse JSON and extract arguments
 			{
 				signatures = requestJson.get("signatures").getAsString();
 				JsonReceived = requestJson.get("state").getAsJsonObject();
@@ -126,10 +118,14 @@ public class clientWaitResponse implements Callable<Integer> {
 			List<JsonObject> accs = new ArrayList<JsonObject>();
 
 			int j = 0;
+
+			//If received snapshot is empty
 			if(JsonReceived.toString().equals("{}")){
 				lastSnapShot = null;
 				lastSnapShotJson = null;
 			}
+
+			//Receives accounts info and parse them
 			else{
 				while(JsonReceived.getAsJsonObject("acc" + j) != null){
 					accs.add(JsonReceived.getAsJsonObject("acc" + j));
@@ -164,12 +160,14 @@ public class clientWaitResponse implements Callable<Integer> {
 
 				System.out.println("Received message from " + serverPacket.getPort());
 
+				//Send ack 
 				auxF.sendAck(socket, serverPacket);
 
 				String body = parseReceivedMessage(serverPacket, weakReadFlag);
 
+				//If it's not a weak read
 				if(weakReadFlag.equals(0)){
-					// Add to list of received4
+					// Add to list of received
 					if (receivedResponses.get(body) != null){
 						if(!receivedResponses.get(body).contains(serverPacket.getPort())){
 							receivedResponses.get(body).add(serverPacket.getPort());
@@ -187,12 +185,18 @@ public class clientWaitResponse implements Callable<Integer> {
 						return 0;
 					}
 				}
+
+				//If it's a weak read
 				else{
+					//Split signatures in an array
 					String[] responseSplit = body.split(" ");
 
 					Boolean verifiedSignatures = true;
 
+					//If there's already a snapshot
 					if(lastSnapShot != null){
+
+						//For to decrypt every signature and verify its validity
 						for(String signture: responseSplit){
 							byte[] payloadHash = auxF.digest(lastSnapShotJson.toString().getBytes(auxF.UTF_8), "SHA3-256");
 							String hashString = new String(payloadHash, "UTF-8");
@@ -219,6 +223,8 @@ public class clientWaitResponse implements Callable<Integer> {
 								}
 							}
 						}
+
+						//If the valid signatures are enough to reach consensus number
 						if(responseSplit.length >= consensusNumber && verifiedSignatures){
 							Double value = lastSnapShot.get(myPub);
 	

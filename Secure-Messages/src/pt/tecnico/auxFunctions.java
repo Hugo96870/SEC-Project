@@ -24,6 +24,7 @@ public class auxFunctions {
 
     public final Charset UTF_8 = StandardCharsets.UTF_8;
 
+    //Function that verifies digital signature
     public boolean verifySignature(String signatureEncrypted, String pathToKey, String receivedFromJson) throws Exception{
 
         String signatureReceived = do_RSADecryption(signatureEncrypted, pathToKey);

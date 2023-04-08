@@ -10,6 +10,7 @@ import java.util.concurrent.Callable;
 
 public class sendAndReceiveAck implements Callable<Integer> {
 
+    //Timeout that defines time between messages
     private static int timeout = 1000;
 
 	private static final int MAX_UDP_DATA_SIZE = (64 * 1024 - 1) - 8 - 20;
@@ -19,6 +20,7 @@ public class sendAndReceiveAck implements Callable<Integer> {
 
 	private static byte[] buf = new byte[BUFFER_SIZE];
 
+    //Create instance of auxFunctions
     private static auxFunctions auxF = new auxFunctions();
 
     private DatagramPacket packetToSend;
@@ -33,24 +35,31 @@ public class sendAndReceiveAck implements Callable<Integer> {
     
     @Override
     public Integer call() throws Exception {
-        // Code to be executed in this thread
         System.out.println("Thread started");
 
         try{
             DatagramSocket socket = null;
             try{
-                if(myPort.equals(0)){
+                if(myPort.equals(0)){ //When communicating between servers 
                     socket = new DatagramSocket();
                 }
                 else{
-                    socket = new DatagramSocket(myPort);
+                    socket = new DatagramSocket(myPort); //Communications involving client and snapshot
                 }
             }catch(Exception e){
+                System.err.println("Failed to create socket");
                 System.err.println(e.getMessage());
             }
+
+            //Set socket timeout
             socket.setSoTimeout(timeout);
+
+            //Flag to verify if the ack was received or not
             boolean ackReceived = false;
+
             System.out.printf("Response packet sent to %d!\n", packetToSend.getPort());
+
+            //Send the packet until receive the ack
             while(!ackReceived){
                 socket.send(packetToSend);
                 try {
@@ -73,12 +82,12 @@ public class sendAndReceiveAck implements Callable<Integer> {
                         System.out.println("Received ack from this server: " + portToSend);
                         ackReceived = true;
                     }
-                    //Expected ack was not received
+                    //Expected ack was not received and increase the timeout to not overflow the network
                     else{
                         timeout += 1000;
                     }
                 } catch (SocketTimeoutException e) {
-                    //Expected ack was not received
+                    //Expected ack was not received and increase the timeout to not overflow the network
                     timeout += 1000;
                 }
             }
